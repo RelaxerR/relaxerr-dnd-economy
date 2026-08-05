@@ -18,3 +18,6 @@ publish/
 
 ## macOS
 .DS_Store
+
+## Служебные файлы инструментов/IDE-агентов
+.claude/
