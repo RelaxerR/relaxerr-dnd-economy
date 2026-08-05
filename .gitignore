@@ -1,0 +1,20 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+
+## Rider / JetBrains
+.idea/
+*.DotSettings.user
+
+## Логи и секреты
+logs/
+appsettings.*.local.json
+*.pfx
+
+## Артефакты публикации
+publish/
+
+## macOS
+.DS_Store
