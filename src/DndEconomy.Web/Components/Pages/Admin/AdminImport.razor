@@ -1,0 +1,66 @@
+@page "/admin/import"
+@using DndEconomy.Application.Import
+@using DndEconomy.Domain.Constants
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IExcelEconomyImportService ImportService
+
+<PageTitle>Импорт из Excel — админка Relaxerr</PageTitle>
+
+<h1>Импорт исходной таблицы (Excel)</h1>
+<p class="catalog-meta">
+  Файл можно перезаливать — записи обновляются по ключу, а не дублируются.
+</p>
+
+<section class="auth-card">
+  <InputFile OnChange="OnFileSelectedAsync" />
+
+  @if (isImporting)
+  {
+    <p>Импортирую...</p>
+  }
+
+  @if (summary is not null)
+  {
+    <div class="status-message status-message--success">
+      <p>Предметов: @summary.ItemsImported, городов: @summary.CitiesImported,
+        коэф. города: @summary.CityModifiersImported, коэф. сезона: @summary.SeasonModifiersImported,
+        сессий: @summary.SessionsImported.</p>
+      @foreach (var warning in summary.Warnings)
+      {
+        <p>⚠ @warning</p>
+      }
+    </div>
+  }
+
+  @if (error is not null)
+  {
+    <div class="status-message status-message--error">@error</div>
+  }
+</section>
+
+@code {
+  private bool isImporting;
+  private EconomyImportSummary? summary;
+  private string? error;
+
+  private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+  {
+    summary = null;
+    error = null;
+    isImporting = true;
+
+    try
+    {
+      using var stream = e.File.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+      summary = await ImportService.ImportAsync(stream, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+      error = $"Ошибка импорта: {ex.Message}";
+    }
+    finally
+    {
+      isImporting = false;
+    }
+  }
+}

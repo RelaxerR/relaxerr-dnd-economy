@@ -2,6 +2,7 @@
 @implements IDisposable
 @using System.Security.Claims
 @using DndEconomy.Application.Notifications
+@using DndEconomy.Domain.Constants
 @inject NavigationManager NavigationManager
 @inject INotificationService NotificationService
 
@@ -15,6 +16,10 @@
           <a href="/catalog">Каталог</a>
           <a href="/profile">Профиль</a>
           <a href="/notifications">Уведомления@(unreadCount > 0 ? $" ({unreadCount})" : "")</a>
+          @if (context.User.IsInRole(RoleNames.Admin))
+          {
+            <a href="/admin/requests">Админка</a>
+          }
           <span class="app-header__user">@context.User.Identity?.Name</span>
           <form action="Account/Logout" method="post">
             <AntiforgeryToken />

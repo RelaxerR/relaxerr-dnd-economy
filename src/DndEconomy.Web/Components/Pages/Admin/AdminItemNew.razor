@@ -1,0 +1,67 @@
+@page "/admin/items/new"
+@using System.ComponentModel.DataAnnotations
+@using DndEconomy.Application.Items
+@using DndEconomy.Domain.Constants
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IItemAdminService ItemAdminService
+
+<PageTitle>Новый предмет — админка Relaxerr</PageTitle>
+
+<h1>Создать предмет</h1>
+
+@if (createdMessage is not null)
+{
+  <div class="status-message status-message--success">@createdMessage</div>
+}
+
+<section class="auth-card">
+  <EditForm Model="model" OnValidSubmit="CreateAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="validation-summary" />
+
+    <div class="form-field"><label>Категория</label><InputText @bind-Value="model.Category" /></div>
+    <div class="form-field"><label>Тип</label><InputText @bind-Value="model.Type" /></div>
+    <div class="form-field"><label>Подтип</label><InputText @bind-Value="model.Subtype" /></div>
+    <div class="form-field"><label>Название (рус.)</label><InputText @bind-Value="model.NameRu" /></div>
+    <div class="form-field"><label>Название (англ., опц.)</label><InputText @bind-Value="model.NameEn" /></div>
+    <div class="form-field"><label>Базовая стоимость</label><InputNumber @bind-Value="model.BaseCost" /></div>
+    <div class="form-field"><label>Вес</label><InputNumber @bind-Value="model.Weight" /></div>
+
+    <button type="submit" class="btn btn--primary">Создать</button>
+  </EditForm>
+</section>
+
+@code {
+  private string? createdMessage;
+  private ItemModel model = new();
+
+  private async Task CreateAsync()
+  {
+    var input = new NewItemInput
+    {
+      Category = model.Category,
+      Type = model.Type,
+      Subtype = model.Subtype,
+      NameRu = model.NameRu,
+      NameEn = string.IsNullOrWhiteSpace(model.NameEn) ? null : model.NameEn,
+      BaseCost = model.BaseCost,
+      Weight = model.Weight,
+      IsPlayerSuggested = false
+    };
+
+    await ItemAdminService.CreateItemAsync(input, CancellationToken.None);
+    createdMessage = $"Предмет «{model.NameRu}» создан.";
+    model = new();
+  }
+
+  private sealed class ItemModel
+  {
+    [Required] public string Category { get; set; } = "";
+    [Required] public string Type { get; set; } = "";
+    [Required] public string Subtype { get; set; } = "";
+    [Required] public string NameRu { get; set; } = "";
+    public string? NameEn { get; set; }
+    public decimal BaseCost { get; set; }
+    public decimal Weight { get; set; }
+  }
+}

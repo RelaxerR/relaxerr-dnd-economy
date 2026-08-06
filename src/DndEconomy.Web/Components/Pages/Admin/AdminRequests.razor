@@ -1,0 +1,142 @@
+@page "/admin/requests"
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using DndEconomy.Application.Items
+@using DndEconomy.Application.Requests
+@using DndEconomy.Domain.Constants
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IItemRequestService ItemRequestService
+
+<PageTitle>Заявки на предметы — админка Relaxerr</PageTitle>
+
+<h1>Заявки на рассмотрении</h1>
+
+@if (requests is null)
+{
+  <p>Загрузка...</p>
+}
+else if (requests.Count == 0)
+{
+  <p class="catalog-meta">Нет заявок на рассмотрении.</p>
+}
+else
+{
+  @foreach (var request in requests)
+  {
+    <section class="auth-card">
+      <h2>@request.ProposedName</h2>
+      @if (!string.IsNullOrWhiteSpace(request.Description))
+      {
+        <p>@request.Description</p>
+      }
+
+      @if (activeRequestId == request.Id)
+      {
+        <EditForm Model="newItem" OnValidSubmit="() => ApproveAsync(request.Id)">
+          <DataAnnotationsValidator />
+          <ValidationSummary class="validation-summary" />
+
+          <div class="form-field"><label>Категория</label><InputText @bind-Value="newItem.Category" /></div>
+          <div class="form-field"><label>Тип</label><InputText @bind-Value="newItem.Type" /></div>
+          <div class="form-field"><label>Подтип</label><InputText @bind-Value="newItem.Subtype" /></div>
+          <div class="form-field"><label>Название (рус.)</label><InputText @bind-Value="newItem.NameRu" /></div>
+          <div class="form-field"><label>Название (англ., опц.)</label><InputText @bind-Value="newItem.NameEn" /></div>
+          <div class="form-field"><label>Базовая стоимость</label><InputNumber @bind-Value="newItem.BaseCost" /></div>
+          <div class="form-field"><label>Вес</label><InputNumber @bind-Value="newItem.Weight" /></div>
+
+          <button type="submit" class="btn btn--primary">Одобрить и создать предмет</button>
+          <button type="button" class="btn" @onclick="CancelReview">Отмена</button>
+        </EditForm>
+      }
+      else
+      {
+        <button class="btn btn--primary" @onclick="() => StartApprove(request)">Одобрить</button>
+        <button class="btn" @onclick="() => RejectAsync(request.Id)">Отклонить</button>
+      }
+    </section>
+  }
+}
+
+@code {
+  [CascadingParameter]
+  private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+  private IReadOnlyList<ItemRequestSummary>? requests;
+  private Guid? activeRequestId;
+  private NewItemModel newItem = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    requests = await ItemRequestService.GetPendingAsync(CancellationToken.None);
+  }
+
+  private void StartApprove(ItemRequestSummary request)
+  {
+    activeRequestId = request.Id;
+    newItem = new NewItemModel { NameRu = request.ProposedName };
+  }
+
+  private void CancelReview()
+  {
+    activeRequestId = null;
+  }
+
+  private async Task<Guid?> GetAdminIdAsync()
+  {
+    if (AuthenticationStateTask is null)
+      return null;
+
+    var authState = await AuthenticationStateTask;
+    var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    return userIdString is not null && Guid.TryParse(userIdString, out var id) ? id : null;
+  }
+
+  private async Task ApproveAsync(Guid requestId)
+  {
+    var adminId = await GetAdminIdAsync();
+    if (adminId is null)
+      return;
+
+    var input = new NewItemInput
+    {
+      Category = newItem.Category,
+      Type = newItem.Type,
+      Subtype = newItem.Subtype,
+      NameRu = newItem.NameRu,
+      NameEn = string.IsNullOrWhiteSpace(newItem.NameEn) ? null : newItem.NameEn,
+      BaseCost = newItem.BaseCost,
+      Weight = newItem.Weight,
+      IsPlayerSuggested = true
+    };
+
+    await ItemRequestService.ApproveAsync(requestId, adminId.Value, input, CancellationToken.None);
+    activeRequestId = null;
+    await ReloadAsync();
+  }
+
+  private async Task RejectAsync(Guid requestId)
+  {
+    var adminId = await GetAdminIdAsync();
+    if (adminId is null)
+      return;
+
+    await ItemRequestService.RejectAsync(requestId, adminId.Value, "Отклонено администратором.", CancellationToken.None);
+    await ReloadAsync();
+  }
+
+  private sealed class NewItemModel
+  {
+    [Required] public string Category { get; set; } = "";
+    [Required] public string Type { get; set; } = "";
+    [Required] public string Subtype { get; set; } = "";
+    [Required] public string NameRu { get; set; } = "";
+    public string? NameEn { get; set; }
+    public decimal BaseCost { get; set; }
+    public decimal Weight { get; set; }
+  }
+}

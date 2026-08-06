@@ -1,0 +1,116 @@
+@page "/admin/users"
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using DndEconomy.Application.Users
+@using DndEconomy.Domain.Constants
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IAdminUserService AdminUserService
+
+<PageTitle>Пользователи — админка Relaxerr</PageTitle>
+
+<h1>Пользователи</h1>
+
+@if (errors.Count > 0)
+{
+  <div class="status-message status-message--error">
+    @foreach (var error in errors)
+    {
+      <p>@error</p>
+    }
+  </div>
+}
+
+<section class="auth-card">
+  <h2>Пригласить игрока</h2>
+  <EditForm Model="newUser" OnValidSubmit="InviteAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="validation-summary" />
+
+    <div class="form-field">
+      <label for="Email">Email</label>
+      <InputText @bind-Value="newUser.Email" id="Email" />
+    </div>
+    <div class="form-field">
+      <label for="DisplayName">Отображаемое имя</label>
+      <InputText @bind-Value="newUser.DisplayName" id="DisplayName" />
+    </div>
+    <div class="form-field">
+      <label for="TemporaryPassword">Временный пароль</label>
+      <InputText @bind-Value="newUser.TemporaryPassword" id="TemporaryPassword" />
+    </div>
+
+    <button type="submit" class="btn btn--primary">Создать</button>
+  </EditForm>
+</section>
+
+<section class="auth-card">
+  <h2>Все пользователи</h2>
+  @if (users is null)
+  {
+    <p>Загрузка...</p>
+  }
+  else
+  {
+    @foreach (var user in users)
+    {
+      <p class="catalog-meta">
+        <strong>@user.DisplayName</strong> (@user.Email) — @string.Join(", ", user.Roles)
+        @if (user.MustChangePassword)
+        {
+          <text> · ждёт смены временного пароля</text>
+        }
+      </p>
+    }
+  }
+</section>
+
+@code {
+  [CascadingParameter]
+  private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+  private IReadOnlyList<UserSummary>? users;
+  private List<string> errors = [];
+  private NewUserModel newUser = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    users = await AdminUserService.GetUsersAsync(CancellationToken.None);
+  }
+
+  private async Task InviteAsync()
+  {
+    errors = [];
+
+    if (AuthenticationStateTask is null)
+      return;
+
+    var authState = await AuthenticationStateTask;
+    var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userIdString is null || !Guid.TryParse(userIdString, out var adminId))
+      return;
+
+    var result = await AdminUserService.InviteUserAsync(
+      adminId, newUser.Email, newUser.DisplayName, newUser.TemporaryPassword, CancellationToken.None);
+
+    if (result.Count > 0)
+    {
+      errors = result.ToList();
+      return;
+    }
+
+    newUser = new();
+    users = await AdminUserService.GetUsersAsync(CancellationToken.None);
+  }
+
+  private sealed class NewUserModel
+  {
+    [Required, EmailAddress]
+    public string Email { get; set; } = "";
+
+    [Required]
+    public string DisplayName { get; set; } = "";
+
+    [Required]
+    public string TemporaryPassword { get; set; } = "";
+  }
+}
