@@ -23,6 +23,7 @@ using DndEconomy.Infrastructure.Requests;
 using DndEconomy.Infrastructure.Users;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -73,9 +74,12 @@ public static class DependencyInjection
       .AddIdentityCore<ApplicationUser>(options =>
       {
         // Пароли выдаются админом при приглашении — держим базовые требования, без избыточных наворотов.
+        // RequireLowercase/RequireUppercase у Identity проверяют только ASCII a-z/A-Z, а не Unicode —
+        // отключаем оба, иначе пароль на кириллице (например, "ВременныйПароль123!") не проходит.
         options.Password.RequiredLength = 8;
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequireUppercase = false;
+        options.Password.RequireLowercase = false;
         options.User.RequireUniqueEmail = true;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(10);
@@ -95,9 +99,20 @@ public static class DependencyInjection
 
     services.AddAuthorizationCore(options =>
     {
+      // Служебные эндпоинты самого Blazor Server (/_blazor/..., /_framework/...) не размечены
+      // [AllowAnonymous] — под FallbackPolicy без исключения они редиректили бы на Login на
+      // каждой анонимной странице (браузер сам инициализирует их через blazor.web.js),
+      // забивая rate-limit политику "login" и ломая интерактивность/стили шапки.
       options.FallbackPolicy = new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .RequireAssertion(ctx => ctx.User.FindFirstValue(AppClaimTypes.MustChangePassword) != "true")
+        .RequireAssertion(ctx =>
+        {
+          if (ctx.Resource is HttpContext { Request.Path: var path } &&
+              (path.StartsWithSegments("/_blazor") || path.StartsWithSegments("/_framework")))
+            return true;
+
+          return ctx.User.Identity?.IsAuthenticated == true
+            && ctx.User.FindFirstValue(AppClaimTypes.MustChangePassword) != "true";
+        })
         .Build();
 
       // Пускает залогиненного пользователя, даже если у него MustChangePassword=true —
