@@ -56,7 +56,10 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
-app.MapStaticAssets();
+// FallbackPolicy требует авторизации на ЛЮБОМ endpoint без [AllowAnonymous] — без этой
+// правки статика (css/framework-скрипты Blazor) тоже блокировалась и редиректила на Login,
+// из-за чего страница входа рендерилась без стилей/JS и выглядела "пустой".
+app.MapStaticAssets().AllowAnonymous();
 app.MapRazorComponents<DndEconomy.Web.Components.App>()
   .AddInteractiveServerRenderMode();
 app.MapAccountEndpoints();
