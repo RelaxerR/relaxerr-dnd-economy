@@ -1,6 +1,9 @@
 @inherits LayoutComponentBase
 @implements IDisposable
+@using System.Security.Claims
+@using DndEconomy.Application.Notifications
 @inject NavigationManager NavigationManager
+@inject INotificationService NotificationService
 
 <div class="app-shell">
   <header class="app-header">
@@ -10,6 +13,8 @@
       <AuthorizeView>
         <Authorized>
           <a href="/catalog">Каталог</a>
+          <a href="/profile">Профиль</a>
+          <a href="/notifications">Уведомления@(unreadCount > 0 ? $" ({unreadCount})" : "")</a>
           <span class="app-header__user">@context.User.Identity?.Name</span>
           <form action="Account/Logout" method="post">
             <AntiforgeryToken />
@@ -31,17 +36,36 @@
 
 @code {
   private string? currentUrl;
+  private int unreadCount;
 
-  protected override void OnInitialized()
+  [CascadingParameter]
+  private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+  protected override async Task OnInitializedAsync()
   {
     currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
     NavigationManager.LocationChanged += OnLocationChanged;
+    await RefreshUnreadCountAsync();
   }
 
-  private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+  private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
   {
     currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
-    StateHasChanged();
+    await RefreshUnreadCountAsync();
+    await InvokeAsync(StateHasChanged);
+  }
+
+  // Без live-пуша (SignalR) — счётчик пересчитывается при каждой навигации, этого достаточно
+  // для закрытой кампании на несколько игроков.
+  private async Task RefreshUnreadCountAsync()
+  {
+    if (AuthenticationStateTask is null)
+      return;
+
+    var authState = await AuthenticationStateTask;
+    var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userIdString is not null && Guid.TryParse(userIdString, out var userId))
+      unreadCount = await NotificationService.GetUnreadCountAsync(userId, CancellationToken.None);
   }
 
   public void Dispose()

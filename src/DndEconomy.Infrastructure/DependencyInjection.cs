@@ -1,14 +1,20 @@
 using System.Security.Claims;
 using DndEconomy.Application.Catalog;
 using DndEconomy.Application.Import;
+using DndEconomy.Application.Notifications;
 using DndEconomy.Application.Pricing;
+using DndEconomy.Application.Profile;
+using DndEconomy.Application.Requests;
 using DndEconomy.Domain.Constants;
 using DndEconomy.Domain.Entities;
 using DndEconomy.Infrastructure.Catalog;
 using DndEconomy.Infrastructure.Identity;
 using DndEconomy.Infrastructure.Import;
+using DndEconomy.Infrastructure.Notifications;
 using DndEconomy.Infrastructure.Persistence;
 using DndEconomy.Infrastructure.Pricing;
+using DndEconomy.Infrastructure.Profile;
+using DndEconomy.Infrastructure.Requests;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -107,6 +113,9 @@ public static class DependencyInjection
     services.AddScoped<IExcelEconomyImportService, ExcelEconomyImportService>();
     services.AddScoped<ICatalogReadStore, CatalogReadStore>();
     services.AddScoped<ICatalogQueryService, CatalogQueryService>();
+    services.AddScoped<IPlayerProfileService, PlayerProfileService>();
+    services.AddScoped<INotificationService, NotificationService>();
+    services.AddScoped<IItemRequestService, ItemRequestService>();
     services.AddSingleton(TimeProvider.System);
   }
 

@@ -1,6 +1,9 @@
 @page "/catalog/{ItemId:guid}"
+@using System.Security.Claims
 @using DndEconomy.Application.Catalog
+@using DndEconomy.Application.Profile
 @inject ICatalogQueryService CatalogQueryService
+@inject IPlayerProfileService PlayerProfileService
 
 <PageTitle>@(item?.NameRu ?? "Предмет") — Relaxerr</PageTitle>
 
@@ -40,6 +43,10 @@ else
       <span>Покупка: @(item.BuyPrice?.ToString("0.##") ?? "—")</span>
       <span>Продажа: @item.SellPrice.ToString("0.##")</span>
     </p>
+
+    <button class="btn btn--primary" @onclick="ToggleFavoriteAsync">
+      @(isFavorite ? "Убрать из избранного" : "Сохранить в избранное")
+    </button>
   </section>
 }
 
@@ -47,12 +54,41 @@ else
   [Parameter]
   public Guid ItemId { get; set; }
 
+  [CascadingParameter]
+  private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
   private CatalogItemViewModel? item;
   private bool notFound;
+  private bool isFavorite;
+  private Guid userId;
 
   protected override async Task OnParametersSetAsync()
   {
     item = await CatalogQueryService.GetItemAsync(ItemId, CancellationToken.None);
     notFound = item is null;
+
+    if (item is null || AuthenticationStateTask is null)
+      return;
+
+    var authState = await AuthenticationStateTask;
+    var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userIdString is not null && Guid.TryParse(userIdString, out var parsedUserId))
+    {
+      userId = parsedUserId;
+      isFavorite = await PlayerProfileService.IsFavoriteAsync(userId, ItemId, CancellationToken.None);
+    }
+  }
+
+  private async Task ToggleFavoriteAsync()
+  {
+    if (userId == Guid.Empty)
+      return;
+
+    if (isFavorite)
+      await PlayerProfileService.RemoveFavoriteAsync(userId, ItemId, CancellationToken.None);
+    else
+      await PlayerProfileService.AddFavoriteAsync(userId, ItemId, note: null, CancellationToken.None);
+
+    isFavorite = !isFavorite;
   }
 }

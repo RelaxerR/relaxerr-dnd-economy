@@ -1,0 +1,58 @@
+@page "/notifications"
+@using System.Security.Claims
+@using DndEconomy.Application.Notifications
+@inject INotificationService NotificationService
+
+<PageTitle>Уведомления — Relaxerr</PageTitle>
+
+<h1>Уведомления</h1>
+
+@if (notifications is null)
+{
+  <p>Загрузка...</p>
+}
+else if (notifications.Count == 0)
+{
+  <p class="catalog-meta">Уведомлений нет.</p>
+}
+else
+{
+  @foreach (var notification in notifications)
+  {
+    <section class="auth-card @(notification.IsRead ? "" : "status-message--success")">
+      <strong>@notification.Title</strong>
+      <p>@notification.Message</p>
+      @if (!notification.IsRead)
+      {
+        <button class="btn" @onclick="() => MarkAsReadAsync(notification.Id)">Прочитано</button>
+      }
+    </section>
+  }
+}
+
+@code {
+  [CascadingParameter]
+  private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+  private Guid userId;
+  private IReadOnlyList<NotificationSummary>? notifications;
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (AuthenticationStateTask is null)
+      return;
+
+    var authState = await AuthenticationStateTask;
+    var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userIdString is null || !Guid.TryParse(userIdString, out userId))
+      return;
+
+    notifications = await NotificationService.GetForUserAsync(userId, CancellationToken.None);
+  }
+
+  private async Task MarkAsReadAsync(Guid notificationId)
+  {
+    await NotificationService.MarkAsReadAsync(userId, notificationId, CancellationToken.None);
+    notifications = await NotificationService.GetForUserAsync(userId, CancellationToken.None);
+  }
+}

@@ -1,0 +1,134 @@
+@page "/profile"
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using DndEconomy.Application.Profile
+@using DndEconomy.Application.Requests
+@using DndEconomy.Domain.Enums
+@inject IPlayerProfileService PlayerProfileService
+@inject IItemRequestService ItemRequestService
+
+<PageTitle>Мой профиль — Relaxerr</PageTitle>
+
+<h1>Мой профиль</h1>
+
+<section class="auth-card">
+  <h2>Избранное</h2>
+  @if (favorites is null)
+  {
+    <p>Загрузка...</p>
+  }
+  else if (favorites.Count == 0)
+  {
+    <p class="catalog-meta">Пока пусто — сохраняйте предметы из каталога.</p>
+  }
+  else
+  {
+    <div class="catalog-grid">
+      @foreach (var favorite in favorites)
+      {
+        <a class="catalog-card" href="@($"catalog/{favorite.ItemId}")">
+          <span class="catalog-card__name">@favorite.NameRu</span>
+          <span class="catalog-card__meta">@favorite.Category · @favorite.Type / @favorite.Subtype</span>
+          <span class="catalog-card__prices">
+            <span>Покупка: @(favorite.BuyPrice?.ToString("0.##") ?? "—")</span>
+            <span>Продажа: @(favorite.SellPrice?.ToString("0.##") ?? "—")</span>
+          </span>
+        </a>
+      }
+    </div>
+  }
+</section>
+
+<section class="auth-card">
+  <h2>Мои заявки на предметы</h2>
+  @if (myRequests is null)
+  {
+    <p>Загрузка...</p>
+  }
+  else if (myRequests.Count == 0)
+  {
+    <p class="catalog-meta">Заявок пока нет.</p>
+  }
+  else
+  {
+    @foreach (var request in myRequests)
+    {
+      <p class="catalog-meta">
+        <strong>@request.ProposedName</strong> — @StatusLabel(request.Status)
+        @if (!string.IsNullOrWhiteSpace(request.ReviewComment))
+        {
+          <text> (@request.ReviewComment)</text>
+        }
+      </p>
+    }
+  }
+
+  <h3>Подать новую заявку</h3>
+  <EditForm Model="newRequest" OnValidSubmit="SubmitRequestAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="validation-summary" />
+
+    <div class="form-field">
+      <label for="ProposedName">Название предмета</label>
+      <InputText @bind-Value="newRequest.ProposedName" id="ProposedName" />
+    </div>
+
+    <div class="form-field">
+      <label for="Description">Описание/контекст (необязательно)</label>
+      <InputTextArea @bind-Value="newRequest.Description" id="Description" />
+    </div>
+
+    <button type="submit" class="btn btn--primary">Отправить заявку</button>
+  </EditForm>
+</section>
+
+@code {
+  [CascadingParameter]
+  private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+  private Guid userId;
+  private IReadOnlyList<FavoriteItemViewModel>? favorites;
+  private IReadOnlyList<ItemRequestSummary>? myRequests;
+  private NewRequestModel newRequest = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (AuthenticationStateTask is null)
+      return;
+
+    var authState = await AuthenticationStateTask;
+    var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userIdString is null || !Guid.TryParse(userIdString, out userId))
+      return;
+
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    favorites = await PlayerProfileService.GetFavoritesAsync(userId, CancellationToken.None);
+    myRequests = await ItemRequestService.GetMyRequestsAsync(userId, CancellationToken.None);
+  }
+
+  private async Task SubmitRequestAsync()
+  {
+    await ItemRequestService.SubmitAsync(userId, newRequest.ProposedName, newRequest.Description, CancellationToken.None);
+    newRequest = new();
+    await ReloadAsync();
+  }
+
+  private static string StatusLabel(ItemRequestStatus status) => status switch
+  {
+    ItemRequestStatus.Approved => "одобрена",
+    ItemRequestStatus.Rejected => "отклонена",
+    _ => "на рассмотрении"
+  };
+
+  private sealed class NewRequestModel
+  {
+    [Required]
+    public string ProposedName { get; set; } = "";
+
+    public string? Description { get; set; }
+  }
+}
