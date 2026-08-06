@@ -74,18 +74,18 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
 ## Известные проблемы / TODO
 
 - **DbContext concurrency в Blazor Server** (`System.InvalidOperationException: A second
-  operation was started on this context instance...`): `ApplicationDbContext` зарегистрирован
-  через `AddDbContext` (Scoped) — в Blazor Server это означает ОДИН экземпляр на весь circuit
-  (SignalR-соединение), а не на HTTP-запрос. Когда `MainLayout` (счётчик уведомлений) и
-  дочерняя страница одновременно обращаются к БД в своих `OnInitializedAsync`, это иногда
-  ловит гонку на одном и том же `DbContext`. Замечено на `/admin/users` (список пользователей +
-  N join-запрос) — воспроизводится нестабильно (не на каждый заход). Точечный фикс (убрать
-  N+1 по ролям, один join-запрос вместо цикла с await) снизил частоту, но не устранил гонку
-  полностью — корень в архитектуре (общий DbContext на circuit), а не в конкретном запросе.
-  **Правильное решение** — перейти на `AddDbContextFactory<ApplicationDbContext>` +
-  `IDbContextFactory<ApplicationDbContext>` во всех Infrastructure-сервисах (создавать свежий
-  контекст на операцию), но это рефактор всех сервисов сразу, отложено. Пока — если увидите
-  500 с этим сообщением, просто обновите страницу.
+  operation was started on this context instance...`) — `ApplicationDbContext` зарегистрирован
+  через `AddDbContextFactory` (не просто `AddDbContext`): в Blazor Server Scoped-инжект означает
+  ОДИН экземпляр на весь circuit (SignalR-соединение), а не на HTTP-запрос, и `MainLayout`
+  (счётчик уведомлений — вызывается на КАЖДОЙ странице) конкурировал за общий DbContext с
+  запросом самой страницы (например, привело к падению `/Account/AccessDenied` с 500 сразу
+  после первого входа). Исправлено для этого — самого частого — случая: `NotificationService`
+  теперь берёт свой собственный короткоживущий контекст через `IDbContextFactory<ApplicationDbContext>`
+  вместо общего на circuit. **Остаточный риск**: все ОСТАЛЬНЫЕ Infrastructure-сервисы всё ещё
+  инжектят общий `ApplicationDbContext` напрямую (это по-прежнему поддерживается — `AddDbContextFactory`
+  регистрирует и обычный Scoped-доступ) — если КАКИЕ-ТО ДВА из них дёрнутся к БД одновременно на
+  одной странице (не через MainLayout), гонка может повториться. Если увидите такую 500-ошибку
+  ещё раз — тот сервис тоже нужно перевести на `IDbContextFactory` по тому же образцу.
 
 ## Дорожная карта
 

@@ -59,7 +59,12 @@ public static class DependencyInjection
     var connectionString = configuration.GetConnectionString("Default")
       ?? throw new InvalidOperationException("Не задана строка подключения 'ConnectionStrings:Default'.");
 
-    services.AddDbContext<ApplicationDbContext>(options =>
+    // AddDbContextFactory вместо AddDbContext: помимо обычного Scoped-инжекта ApplicationDbContext
+    // (как раньше, весь остальной код не меняется) даёт IDbContextFactory — нужен NotificationService,
+    // чтобы создавать отдельный короткоживущий контекст для счётчика уведомлений в MainLayout
+    // (он есть на каждой странице и иначе конкурирует за общий на circuit DbContext с самой страницей —
+    // "A second operation was started on this context instance...", см. CLAUDE.md).
+    services.AddDbContextFactory<ApplicationDbContext>(options =>
       options.UseNpgsql(connectionString));
   }
 
