@@ -1,11 +1,23 @@
 @page "/"
 
+@attribute [AllowAnonymous]
+
 <PageTitle>Relaxerr — Экономика</PageTitle>
 
 <section class="placeholder-card">
-  <h1>Каркас проекта развёрнут</h1>
-  <p>
-    Это временная заглушка Фазы 0. Каталог предметов, поиск, профиль игрока
-    и админ-панель добавляются в следующих фазах.
-  </p>
+  <AuthorizeView>
+    <Authorized>
+      <h1>С возвращением!</h1>
+      <p>Каталог предметов кампании — с ценами по текущей сессии, городу и сезону.</p>
+      <a class="btn btn--primary" href="/catalog">Перейти в каталог</a>
+    </Authorized>
+    <NotAuthorized>
+      <h1>Экономика кампании</h1>
+      <p>
+        Доступ к каталогу — только по приглашению администратора. Если у вас уже есть
+        учётная запись, войдите ниже.
+      </p>
+      <a class="btn btn--primary" href="Account/Login">Войти</a>
+    </NotAuthorized>
+  </AuthorizeView>
 </section>

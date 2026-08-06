@@ -1,5 +1,8 @@
 using System.Threading.RateLimiting;
 using DndEconomy.Infrastructure;
+using DndEconomy.Infrastructure.Identity;
+using DndEconomy.Web.Components.Account;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 
@@ -24,11 +27,19 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRazorComponents()
   .AddInteractiveServerComponents();
 
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<IdentityRedirectManager>();
+builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
+
 builder.Services.AddRateLimiter(ConfigureRateLimiting);
 
 #endregion
 
 var app = builder.Build();
+
+// Идемпотентный сидинг ролей Admin/Player и первого администратора из секции AdminSeed
+// (см. IdentitySeeder) — до запуска хоста, чтобы им можно было залогиниться сразу.
+await app.Services.SeedIdentityDataAsync();
 
 #region Конвейер обработки запросов
 
@@ -41,11 +52,14 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseSerilogRequestLogging();
 app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapRazorComponents<DndEconomy.Web.Components.App>()
   .AddInteractiveServerRenderMode();
+app.MapAccountEndpoints();
 
 #endregion
 

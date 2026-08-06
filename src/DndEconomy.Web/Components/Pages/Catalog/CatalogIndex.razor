@@ -1,0 +1,201 @@
+@page "/catalog"
+@using DndEconomy.Application.Catalog
+@inject ICatalogQueryService CatalogQueryService
+@inject ICatalogReadStore CatalogReadStore
+@implements IDisposable
+
+<PageTitle>Каталог — Relaxerr</PageTitle>
+
+<h1>Каталог предметов</h1>
+
+<div class="catalog-toolbar">
+  <input type="search" placeholder="Поиск по названию..." value="@searchTerm" @oninput="OnSearchInput" />
+
+  <select @bind="selectedCategory" @bind:after="OnCategoryChangedAsync">
+    <option value="">Все категории</option>
+    @foreach (var category in categories)
+    {
+      <option value="@category">@category</option>
+    }
+  </select>
+
+  <select @bind="selectedType" @bind:after="OnTypeChangedAsync">
+    <option value="">Все типы</option>
+    @foreach (var type in types)
+    {
+      <option value="@type">@type</option>
+    }
+  </select>
+
+  <select @bind="selectedSubtype" @bind:after="ReloadPageAsync">
+    <option value="">Все подтипы</option>
+    @foreach (var subtype in subtypes)
+    {
+      <option value="@subtype">@subtype</option>
+    }
+  </select>
+
+  <label>
+    <input type="checkbox" @bind="onlyAvailable" @bind:after="ReloadPageAsync" />
+    Только в наличии
+  </label>
+
+  <select @bind="sortOrder" @bind:after="ReloadPageAsync">
+    <option value="@CatalogSortOrder.NameAsc">Имя (А-Я)</option>
+    <option value="@CatalogSortOrder.NameDesc">Имя (Я-А)</option>
+    <option value="@CatalogSortOrder.PriceAsc">Цена (сначала дешёвые)</option>
+    <option value="@CatalogSortOrder.PriceDesc">Цена (сначала дорогие)</option>
+  </select>
+</div>
+
+@if (catalogPage is null)
+{
+  <p>Загрузка...</p>
+}
+else if (catalogPage.TotalCount == 0 && string.IsNullOrEmpty(catalogPage.ActiveSessionName))
+{
+  <p class="catalog-meta">Нет активной экономической сессии — обратитесь к администратору.</p>
+}
+else
+{
+  <p class="catalog-meta">
+    Сессия «@catalogPage.ActiveSessionName», город @catalogPage.CityName · найдено предметов: @catalogPage.TotalCount
+  </p>
+
+  <div class="catalog-grid">
+    @foreach (var item in catalogPage.Items)
+    {
+      <a class="catalog-card" href="@($"catalog/{item.ItemId}")">
+        <span class="catalog-card__name">@item.NameRu</span>
+        <span class="catalog-card__meta">@item.Category · @item.Type / @item.Subtype</span>
+
+        @if (item.IsPlayerSuggested)
+        {
+          <span class="badge badge--player-suggested">Добавлено сообществом</span>
+        }
+        @if (!item.IsAvailable)
+        {
+          <span class="badge badge--unavailable">Нет в наличии</span>
+        }
+
+        <span class="catalog-card__prices">
+          <span>Покупка: @(item.BuyPrice?.ToString("0.##") ?? "—")</span>
+          <span>Продажа: @item.SellPrice.ToString("0.##")</span>
+        </span>
+      </a>
+    }
+  </div>
+
+  <div class="catalog-pagination">
+    <button disabled="@(pageNumber <= 1)" @onclick="() => ChangePageAsync(pageNumber - 1)">← Назад</button>
+    <span>Стр. @pageNumber из @Math.Max(1, (int)Math.Ceiling(catalogPage.TotalCount / (double)PageSize))</span>
+    <button disabled="@(pageNumber * PageSize >= catalogPage.TotalCount)" @onclick="() => ChangePageAsync(pageNumber + 1)">Дальше →</button>
+  </div>
+}
+
+@code {
+  private const int PageSize = 24;
+  private const int SearchDebounceMilliseconds = 300;
+
+  private CatalogPage? catalogPage;
+  private IReadOnlyList<string> categories = [];
+  private IReadOnlyList<string> types = [];
+  private IReadOnlyList<string> subtypes = [];
+
+  private string searchTerm = "";
+  private string selectedCategory = "";
+  private string selectedType = "";
+  private string selectedSubtype = "";
+  private bool onlyAvailable;
+  private CatalogSortOrder sortOrder = CatalogSortOrder.NameAsc;
+  private int pageNumber = 1;
+
+  private CancellationTokenSource? searchDebounceCts;
+
+  protected override async Task OnInitializedAsync()
+  {
+    categories = await CatalogReadStore.GetDistinctCategoriesAsync(CancellationToken.None);
+    types = await CatalogReadStore.GetDistinctTypesAsync(null, CancellationToken.None);
+    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
+    await LoadPageAsync();
+  }
+
+  private void OnSearchInput(ChangeEventArgs e)
+  {
+    searchTerm = e.Value?.ToString() ?? "";
+
+    searchDebounceCts?.Cancel();
+    var cts = new CancellationTokenSource();
+    searchDebounceCts = cts;
+
+    _ = DebounceSearchAsync(cts.Token);
+  }
+
+  private async Task DebounceSearchAsync(CancellationToken token)
+  {
+    try
+    {
+      await Task.Delay(SearchDebounceMilliseconds, token);
+    }
+    catch (TaskCanceledException)
+    {
+      return;
+    }
+
+    if (token.IsCancellationRequested)
+      return;
+
+    pageNumber = 1;
+    await LoadPageAsync();
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task OnCategoryChangedAsync()
+  {
+    selectedType = "";
+    selectedSubtype = "";
+    types = await CatalogReadStore.GetDistinctTypesAsync(NullIfEmpty(selectedCategory), CancellationToken.None);
+    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
+    await ReloadPageAsync();
+  }
+
+  private async Task OnTypeChangedAsync()
+  {
+    selectedSubtype = "";
+    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(NullIfEmpty(selectedType), CancellationToken.None);
+    await ReloadPageAsync();
+  }
+
+  private Task ReloadPageAsync()
+  {
+    pageNumber = 1;
+    return LoadPageAsync();
+  }
+
+  private Task ChangePageAsync(int newPageNumber)
+  {
+    pageNumber = newPageNumber;
+    return LoadPageAsync();
+  }
+
+  private async Task LoadPageAsync()
+  {
+    var query = new CatalogQuery
+    {
+      SearchTerm = NullIfEmpty(searchTerm),
+      Category = NullIfEmpty(selectedCategory),
+      Type = NullIfEmpty(selectedType),
+      Subtype = NullIfEmpty(selectedSubtype),
+      OnlyAvailable = onlyAvailable ? true : null,
+      SortOrder = sortOrder,
+      PageNumber = pageNumber,
+      PageSize = PageSize
+    };
+
+    catalogPage = await CatalogQueryService.GetPageAsync(query, CancellationToken.None);
+  }
+
+  private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+  public void Dispose() => searchDebounceCts?.Cancel();
+}

@@ -1,0 +1,38 @@
+@page "/Account/AccessDenied"
+
+@attribute [AllowAnonymous]
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Доступ запрещён — Relaxerr</PageTitle>
+
+@if (!redirecting)
+{
+  <section class="auth-card">
+    <h1>Доступ запрещён</h1>
+    <p>У вас нет прав для просмотра этой страницы.</p>
+  </section>
+}
+
+@code {
+  private bool redirecting;
+
+  [CascadingParameter]
+  private HttpContext HttpContext { get; set; } = default!;
+
+  protected override async Task OnInitializedAsync()
+  {
+    // Основная причина попадания сюда с нашим FallbackPolicy — незавершённая форс-смена
+    // временного пароля, а не реальная нехватка прав. В этом случае сразу уводим на нужную форму.
+    if (HttpContext.User.Identity?.IsAuthenticated != true)
+      return;
+
+    var user = await UserManager.GetUserAsync(HttpContext.User);
+    if (user is { MustChangePassword: true })
+    {
+      redirecting = true;
+      RedirectManager.RedirectTo("Account/ForceChangePassword");
+    }
+  }
+}

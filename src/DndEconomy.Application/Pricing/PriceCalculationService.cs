@@ -50,9 +50,9 @@ public sealed class PriceCalculationService : IPriceCalculationService
     var cityCoefficient = await _readStore.GetCityCoefficientAsync(item.Type, item.Subtype, session.CityId, cancellationToken);
     var seasonCoefficient = await _readStore.GetSeasonCoefficientAsync(item.Type, item.Subtype, session.Season, cancellationToken);
 
-    var calculatedCost = CalculateRawCost(item.BaseCost, session.BaseCoefficient, cityCoefficient, seasonCoefficient);
-    var buyPrice = ResolveBuyPrice(calculatedCost);
-    var sellPrice = ResolveSellPrice(calculatedCost, item.BaseCost, session.SellCoefficient);
+    var calculatedCost = PriceFormulas.CalculateRawCost(item.BaseCost, session.BaseCoefficient, cityCoefficient, seasonCoefficient);
+    var buyPrice = PriceFormulas.ResolveBuyPrice(calculatedCost);
+    var sellPrice = PriceFormulas.ResolveSellPrice(calculatedCost, item.BaseCost, session.SellCoefficient);
 
     _logger.LogInformation(
       "Цена рассчитана: предмет {ItemId}, сессия {Session}, город {City}, покупка {BuyPrice}, продажа {SellPrice}",
@@ -67,30 +67,6 @@ public sealed class PriceCalculationService : IPriceCalculationService
       CityName = session.CityName,
       SeasonName = session.Season.ToString()
     };
-  }
-
-  #endregion
-
-  #region Приватные шаги расчёта
-
-  /// <summary>Шаг 1: базовая формула E2 = H2 × I2 × J2 × K2 из исходной таблицы.</summary>
-  private static decimal CalculateRawCost(decimal baseCost, decimal sessionCoefficient, decimal cityCoefficient, decimal seasonCoefficient)
-    => baseCost * sessionCoefficient * cityCoefficient * seasonCoefficient;
-
-  /// <summary>Шаг 2: цена покупки — null ("Нет в наличии"), если рассчитанная стоимость не положительна.</summary>
-  private static decimal? ResolveBuyPrice(decimal calculatedCost)
-    => calculatedCost <= 0 ? null : calculatedCost;
-
-  /// <summary>
-  /// Шаг 3: цена продажи. Если товара нет в наличии, лавка всё равно готова откупить его дороже
-  /// базовой цены (формула G: H×(1+(1-L))), иначе — обычная скидка от рассчитанной стоимости.
-  /// </summary>
-  private static decimal ResolveSellPrice(decimal calculatedCost, decimal baseCost, decimal sellCoefficient)
-  {
-    var candidateSellPrice = calculatedCost * sellCoefficient;
-    return candidateSellPrice <= 0
-      ? baseCost * (1 + (1 - sellCoefficient))
-      : candidateSellPrice;
   }
 
   #endregion

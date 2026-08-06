@@ -1,0 +1,112 @@
+@page "/Account/Login"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.RateLimiting
+
+@attribute [AllowAnonymous]
+@attribute [EnableRateLimiting("login")]
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject ILogger<Login> Logger
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Вход — Relaxerr</PageTitle>
+
+<section class="auth-card">
+  <h1>Вход</h1>
+  <p class="auth-card__hint">Доступ — только по приглашению администратора.</p>
+
+  <StatusMessage Message="@errorMessage" />
+
+  <EditForm EditContext="editContext" method="post" OnSubmit="LoginUser" FormName="login">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="validation-summary" role="alert" />
+
+    <div class="form-field">
+      <label for="Input.Email">Email</label>
+      <InputText @bind-Value="Input.Email" id="Input.Email" autocomplete="username" aria-required="true" placeholder="you@example.com" />
+      <ValidationMessage For="() => Input.Email" />
+    </div>
+
+    <div class="form-field">
+      <label for="Input.Password">Пароль</label>
+      <InputText type="password" @bind-Value="Input.Password" id="Input.Password" autocomplete="current-password" aria-required="true" />
+      <ValidationMessage For="() => Input.Password" />
+    </div>
+
+    <div class="form-field form-field--checkbox">
+      <label>
+        <InputCheckbox @bind-Value="Input.RememberMe" />
+        Запомнить меня
+      </label>
+    </div>
+
+    <button type="submit" class="btn btn--primary">Войти</button>
+  </EditForm>
+</section>
+
+@code {
+  private string? errorMessage;
+  private EditContext editContext = default!;
+
+  [CascadingParameter]
+  private HttpContext HttpContext { get; set; } = default!;
+
+  [SupplyParameterFromForm]
+  private InputModel Input { get; set; } = default!;
+
+  [SupplyParameterFromQuery]
+  private string? ReturnUrl { get; set; }
+
+  protected override async Task OnInitializedAsync()
+  {
+    Input ??= new();
+    editContext = new EditContext(Input);
+
+    if (HttpMethods.IsGet(HttpContext.Request.Method))
+    {
+      // Сбрасываем внешнюю cookie-схему для чистого процесса входа (external login в проекте не используется,
+      // но SignInManager всегда полагается на этот сброс перед новой попыткой).
+      await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+    }
+  }
+
+  private async Task LoginUser()
+  {
+    if (!editContext.Validate())
+      return;
+
+    // lockoutOnFailure: true — иначе настроенный Lockout.MaxFailedAccessAttempts никогда не сработает.
+    var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: true);
+
+    if (result.Succeeded)
+    {
+      Logger.LogInformation("Пользователь {Email} вошёл в систему.", Input.Email);
+      RedirectManager.RedirectTo(ReturnUrl ?? "/catalog");
+    }
+    else if (result.IsLockedOut)
+    {
+      Logger.LogWarning("Учётная запись {Email} временно заблокирована после серии неверных попыток входа.", Input.Email);
+      RedirectManager.RedirectTo("Account/Lockout");
+    }
+    else
+    {
+      errorMessage = "Error: неверный email или пароль.";
+    }
+  }
+
+  private sealed class InputModel
+  {
+    [Required]
+    [EmailAddress]
+    public string Email { get; set; } = "";
+
+    [Required]
+    [DataType(DataType.Password)]
+    public string Password { get; set; } = "";
+
+    [Display(Name = "Запомнить меня?")]
+    public bool RememberMe { get; set; }
+  }
+}

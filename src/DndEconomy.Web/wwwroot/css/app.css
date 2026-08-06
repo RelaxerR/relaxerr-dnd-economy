@@ -50,3 +50,196 @@ body {
   padding: 32px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
+
+/* Навигация в шапке — полноценный визуальный стиль см. Фазу 4, сейчас только функциональность. */
+
+.app-header__nav {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.95rem;
+}
+
+.app-header__user {
+  color: rgba(29, 29, 31, 0.6);
+}
+
+.app-header__logout {
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+/* Формы входа/смены пароля */
+
+.auth-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-large);
+  padding: 32px;
+  max-width: 420px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.auth-card__hint {
+  color: rgba(29, 29, 31, 0.6);
+  margin-top: -8px;
+}
+
+.form-field {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-field--checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.form-field input[type="text"],
+.form-field input[type="email"],
+.form-field input[type="password"] {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font: inherit;
+}
+
+.validation-summary,
+.validation-message {
+  color: #b3261e;
+  font-size: 0.9rem;
+}
+
+.status-message {
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.status-message--success {
+  background: rgba(52, 199, 89, 0.12);
+  color: #1e7c34;
+}
+
+.status-message--error {
+  background: rgba(255, 59, 48, 0.1);
+  color: #b3261e;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn--primary {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* Каталог */
+
+.catalog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.catalog-toolbar input[type="search"],
+.catalog-toolbar select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font: inherit;
+}
+
+.catalog-meta {
+  color: rgba(29, 29, 31, 0.6);
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.catalog-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-large);
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  text-decoration: none;
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.catalog-card__name {
+  font-weight: 600;
+}
+
+.catalog-card__meta {
+  color: rgba(29, 29, 31, 0.6);
+  font-size: 0.85rem;
+}
+
+.catalog-card__prices {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  align-self: flex-start;
+}
+
+.badge--unavailable {
+  background: rgba(255, 59, 48, 0.1);
+  color: #b3261e;
+}
+
+.badge--player-suggested {
+  background: rgba(139, 94, 52, 0.12);
+  color: var(--color-accent);
+}
+
+.catalog-pagination {
+  margin-top: 24px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.catalog-pagination button {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--color-surface);
+  cursor: pointer;
+  font: inherit;
+}
+
+.catalog-pagination button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

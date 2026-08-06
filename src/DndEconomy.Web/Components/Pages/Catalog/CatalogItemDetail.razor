@@ -1,0 +1,58 @@
+@page "/catalog/{ItemId:guid}"
+@using DndEconomy.Application.Catalog
+@inject ICatalogQueryService CatalogQueryService
+
+<PageTitle>@(item?.NameRu ?? "Предмет") — Relaxerr</PageTitle>
+
+@if (notFound)
+{
+  <p class="catalog-meta">Предмет не найден или сейчас нет активной экономической сессии.</p>
+  <a href="/catalog">← Вернуться в каталог</a>
+}
+else if (item is null)
+{
+  <p>Загрузка...</p>
+}
+else
+{
+  <a href="/catalog">← Вернуться в каталог</a>
+
+  <section class="auth-card">
+    <h1>@item.NameRu</h1>
+    @if (!string.IsNullOrWhiteSpace(item.NameEn))
+    {
+      <p class="catalog-card__meta">@item.NameEn</p>
+    }
+
+    <p class="catalog-card__meta">@item.Category · @item.Type / @item.Subtype</p>
+    <p class="catalog-card__meta">Вес: @item.Weight.ToString("0.##")</p>
+
+    @if (item.IsPlayerSuggested)
+    {
+      <span class="badge badge--player-suggested">Добавлено сообществом</span>
+    }
+    @if (!item.IsAvailable)
+    {
+      <span class="badge badge--unavailable">Нет в наличии</span>
+    }
+
+    <p class="catalog-card__prices">
+      <span>Покупка: @(item.BuyPrice?.ToString("0.##") ?? "—")</span>
+      <span>Продажа: @item.SellPrice.ToString("0.##")</span>
+    </p>
+  </section>
+}
+
+@code {
+  [Parameter]
+  public Guid ItemId { get; set; }
+
+  private CatalogItemViewModel? item;
+  private bool notFound;
+
+  protected override async Task OnParametersSetAsync()
+  {
+    item = await CatalogQueryService.GetItemAsync(ItemId, CancellationToken.None);
+    notFound = item is null;
+  }
+}

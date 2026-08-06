@@ -1,11 +1,51 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager NavigationManager
 
 <div class="app-shell">
   <header class="app-header">
-    <span class="app-header__title">Relaxerr · Экономика</span>
+    <a class="app-header__title" href="/">Relaxerr · Экономика</a>
+
+    <nav class="app-header__nav">
+      <AuthorizeView>
+        <Authorized>
+          <a href="/catalog">Каталог</a>
+          <span class="app-header__user">@context.User.Identity?.Name</span>
+          <form action="Account/Logout" method="post">
+            <AntiforgeryToken />
+            <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+            <button type="submit" class="app-header__logout">Выйти</button>
+          </form>
+        </Authorized>
+        <NotAuthorized>
+          <a href="Account/Login">Войти</a>
+        </NotAuthorized>
+      </AuthorizeView>
+    </nav>
   </header>
 
   <main class="app-content">
     @Body
   </main>
 </div>
+
+@code {
+  private string? currentUrl;
+
+  protected override void OnInitialized()
+  {
+    currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+    NavigationManager.LocationChanged += OnLocationChanged;
+  }
+
+  private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+  {
+    currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+    StateHasChanged();
+  }
+
+  public void Dispose()
+  {
+    NavigationManager.LocationChanged -= OnLocationChanged;
+  }
+}
