@@ -97,7 +97,8 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
       var (nameRu, nameEn) = SplitItemName(rawName);
       var externalUuid = row.Cell(7).GetString();
 
-      var item = existingByUuid.GetValueOrDefault(externalUuid) ?? new Item { ExternalUuid = externalUuid };
+      var isNewItem = !existingByUuid.TryGetValue(externalUuid, out var item);
+      item ??= new Item { ExternalUuid = externalUuid };
 
       item.Category = row.Cell(1).GetString();
       item.Type = row.Cell(2).GetString();
@@ -108,7 +109,10 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
       item.Weight = row.Cell(6).GetValue<decimal>();
       item.UpdatedAtUtc = DateTime.UtcNow;
 
-      if (item.Id == default)
+      // Item.Id получает Guid.NewGuid() уже в конструкторе (AuditableEntity) — проверка
+      // "Id == default" здесь не сработала бы никогда, поэтому отслеживаем "новый ли объект"
+      // явно через TryGetValue, а не через состояние Id.
+      if (isNewItem)
       {
         dbContext.Items.Add(item);
       }
@@ -323,7 +327,9 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
       session.SellCoefficient = row.Cell(8).GetValue<decimal>();
       session.UpdatedAtUtc = DateTime.UtcNow;
 
-      if (session.Id == default || !existingSessions.ContainsKey(name))
+      // EconomySession.Id получает Guid.NewGuid() уже в конструкторе (AuditableEntity), поэтому
+      // "новизну" определяем только по наличию в словаре существующих сессий, а не по Id.
+      if (!existingSessions.ContainsKey(name))
       {
         dbContext.EconomySessions.Add(session);
       }

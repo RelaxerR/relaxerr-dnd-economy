@@ -72,6 +72,11 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
   и без явной коллации в схеме `ORDER BY "NameRu"` был бы сломан на любом сервере с не-русской
   локалью. Проверить при деплое, что целевой Postgres собран с ICU (`SELECT collname FROM
   pg_collation WHERE collname = 'ru-x-icu';` — должна вернуться строка).
+- **Toast-уведомления об успешных действиях**: `Services/ToastService.cs` (Scoped, простое
+  событие `OnShow`) + `Components/Layout/ToastContainer.razor` (подписывается, автоскрытие через
+  `Task.Delay(4000)`), справа внизу. Используется только на уже интерактивных страницах — сам
+  компонент требует circuit, добавлять его на статичные `EditForm`-страницы бессмысленно (там уже
+  есть инлайн-баннер `status-message--success` после SSR-постбэка).
 
 ## Экономическая логика (перенесена из Excel один в один)
 
@@ -86,6 +91,30 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
 
 ## Известные проблемы / TODO
 
+- **Ни одна страница не была интерактивной (исправлено 2026-08-09)** — `Program.cs` регистрировал
+  `AddInteractiveServerRenderMode()`, но НИ ОДИН компонент фактически не объявлял
+  `@rendermode InteractiveServer` (ни глобально на `<Routes>` в `App.razor`, ни на страницах) —
+  весь сайт молча рендерился в чистом статичном SSR. Из-за этого не работало вообще ничего, что
+  не является настоящим HTTP form-post: избранное (`@onclick` на wax-seal), пагинация/поиск в
+  каталоге (`@oninput`/`@onclick`), "прочитано" у уведомлений, одобрить/отклонить в заявках,
+  и загрузка файла в `<InputFile>` на импорте Excel — эти компоненты рендерились, но клики/выбор
+  файла не производили НИКАКОГО эффекта (не было ни ошибки, ни исключения — событие просто некому
+  было принять без circuit'а). **Важно**: `@rendermode="InteractiveServer"` на `<Routes>`
+  ЛОМАЕТ `[ExcludeFromInteractiveRouting]`-страницы (Login и т.д. начинают рендерить "Страница не
+  найдена" при прямом заходе, проверено эмпирически) — правильный фикс здесь: `@rendermode
+  InteractiveServer` ТОЧЕЧНО на каждой странице, которой реально нужна интерактивность
+  (`CatalogIndex`, `CatalogItemDetail`, `NotificationsIndex`, `AdminRequests`, `AdminImport`), а
+  не глобально. Страницы на чистом `EditForm`+`OnValidSubmit` (создание предмета, приглашение
+  пользователя, города/сессии) в интерактивности не нуждаются — POST и так работает в SSR.
+- **Импорт Excel молча не сохранял новые предметы (исправлено 2026-08-09)** —
+  `ExcelEconomyImportService.ImportItemsAsync` проверял `if (item.Id == default)`, чтобы решить,
+  новый предмет или существующий, но `AuditableEntity.Id` инициализируется `Guid.NewGuid()` уже
+  в конструкторе — проверка никогда не была истинной для новых предметов, `dbContext.Items.Add`
+  не вызывался, а `summary.ItemsImported++` всё равно врал об успехе. Фикс: отслеживать "новый ли
+  объект" через `TryGetValue` по словарю существующих записей, а не по состоянию `Id` (тот же
+  паттерн уже случайно работал для `EconomySession` из-за резервного `||`-условия — тоже приведено
+  к явному виду). Также добавлено копирование `InputFile`-потока в `MemoryStream` перед
+  `XLWorkbook(stream)` — `BrowserFileStream` не поддерживает `Seek`, а xlsx читается как ZIP.
 - **DbContext concurrency в Blazor Server** (`System.InvalidOperationException: A second
   operation was started on this context instance...`) — Scoped-инжект `ApplicationDbContext`
   в Blazor Server означает ОДИН экземпляр на весь circuit (SignalR-соединение), а не на

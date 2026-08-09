@@ -1,10 +1,13 @@
 @page "/admin/import"
+@rendermode InteractiveServer
 @using DndEconomy.Application.Import
 @using DndEconomy.Domain.Constants
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IExcelEconomyImportService ImportService
+@inject ToastService ToastService
 
 <PageTitle>Импорт из Excel — админка Relaxerr</PageTitle>
+<ToastContainer />
 
 <h1>Импорт исходной таблицы (Excel)</h1>
 <AdminNav />
@@ -52,8 +55,15 @@
 
     try
     {
-      using var stream = e.File.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
-      summary = await ImportService.ImportAsync(stream, CancellationToken.None);
+      // BrowserFileStream (Blazor Server) не поддерживает Seek, а ClosedXML читает xlsx как
+      // ZIP-контейнер — нужен произвольный доступ к центральной директории в конце файла.
+      await using var browserStream = e.File.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+      using var seekableStream = new MemoryStream();
+      await browserStream.CopyToAsync(seekableStream);
+      seekableStream.Position = 0;
+
+      summary = await ImportService.ImportAsync(seekableStream, CancellationToken.None);
+      ToastService.ShowSuccess("Импорт завершён успешно");
     }
     catch (Exception ex)
     {

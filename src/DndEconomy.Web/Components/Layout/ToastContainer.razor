@@ -1,0 +1,37 @@
+@implements IDisposable
+@inject DndEconomy.Web.Services.ToastService ToastService
+
+<div class="toast-stack">
+  @foreach (var toast in toasts)
+  {
+    <div class="toast" @key="toast.Id">@toast.Text</div>
+  }
+</div>
+
+@code {
+  private readonly List<ToastItem> toasts = [];
+
+  protected override void OnInitialized()
+  {
+    ToastService.OnShow += HandleShow;
+  }
+
+  private async void HandleShow(string message)
+  {
+    var item = new ToastItem(Guid.NewGuid(), message);
+    toasts.Add(item);
+    await InvokeAsync(StateHasChanged);
+
+    await Task.Delay(4000);
+
+    toasts.Remove(item);
+    await InvokeAsync(StateHasChanged);
+  }
+
+  public void Dispose()
+  {
+    ToastService.OnShow -= HandleShow;
+  }
+
+  private sealed record ToastItem(Guid Id, string Text);
+}

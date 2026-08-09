@@ -1,11 +1,14 @@
 @page "/catalog/{ItemId:guid}"
+@rendermode InteractiveServer
 @using System.Security.Claims
 @using DndEconomy.Application.Catalog
 @using DndEconomy.Application.Profile
 @inject ICatalogQueryService CatalogQueryService
 @inject IPlayerProfileService PlayerProfileService
+@inject ToastService ToastService
 
 <PageTitle>@(item?.NameRu ?? "Предмет") — Relaxerr</PageTitle>
+<ToastContainer />
 
 @if (notFound)
 {
@@ -92,5 +95,6 @@ else
       await PlayerProfileService.AddFavoriteAsync(userId, ItemId, note: null, CancellationToken.None);
 
     isFavorite = !isFavorite;
+    ToastService.ShowSuccess(isFavorite ? "Добавлено в избранное" : "Убрано из избранного");
   }
 }
