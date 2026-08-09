@@ -9,19 +9,21 @@ namespace DndEconomy.Infrastructure.Profile;
 /// <inheritdoc cref="IPlayerProfileService" />
 public sealed class PlayerProfileService : IPlayerProfileService
 {
-  private readonly ApplicationDbContext _dbContext;
+  private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
   private readonly IPriceCalculationService _priceCalculationService;
 
-  public PlayerProfileService(ApplicationDbContext dbContext, IPriceCalculationService priceCalculationService)
+  public PlayerProfileService(IDbContextFactory<ApplicationDbContext> dbContextFactory, IPriceCalculationService priceCalculationService)
   {
-    _dbContext = dbContext;
+    _dbContextFactory = dbContextFactory;
     _priceCalculationService = priceCalculationService;
   }
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<FavoriteItemViewModel>> GetFavoritesAsync(Guid userId, CancellationToken cancellationToken)
   {
-    var saved = await _dbContext.UserSavedItems.AsNoTracking()
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var saved = await dbContext.UserSavedItems.AsNoTracking()
       .Where(x => x.UserId == userId)
       .Include(x => x.Item)
       .OrderByDescending(x => x.CreatedAtUtc)
@@ -52,28 +54,35 @@ public sealed class PlayerProfileService : IPlayerProfileService
   }
 
   /// <inheritdoc />
-  public Task<bool> IsFavoriteAsync(Guid userId, Guid itemId, CancellationToken cancellationToken)
-    => _dbContext.UserSavedItems.AsNoTracking().AnyAsync(x => x.UserId == userId && x.ItemId == itemId, cancellationToken);
+  public async Task<bool> IsFavoriteAsync(Guid userId, Guid itemId, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await dbContext.UserSavedItems.AsNoTracking().AnyAsync(x => x.UserId == userId && x.ItemId == itemId, cancellationToken);
+  }
 
   /// <inheritdoc />
   public async Task AddFavoriteAsync(Guid userId, Guid itemId, string? note, CancellationToken cancellationToken)
   {
-    var exists = await _dbContext.UserSavedItems.AnyAsync(x => x.UserId == userId && x.ItemId == itemId, cancellationToken);
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var exists = await dbContext.UserSavedItems.AnyAsync(x => x.UserId == userId && x.ItemId == itemId, cancellationToken);
     if (exists)
       return;
 
-    _dbContext.UserSavedItems.Add(new UserSavedItem { UserId = userId, ItemId = itemId, Note = note });
-    await _dbContext.SaveChangesAsync(cancellationToken);
+    dbContext.UserSavedItems.Add(new UserSavedItem { UserId = userId, ItemId = itemId, Note = note });
+    await dbContext.SaveChangesAsync(cancellationToken);
   }
 
   /// <inheritdoc />
   public async Task RemoveFavoriteAsync(Guid userId, Guid itemId, CancellationToken cancellationToken)
   {
-    var saved = await _dbContext.UserSavedItems.SingleOrDefaultAsync(x => x.UserId == userId && x.ItemId == itemId, cancellationToken);
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var saved = await dbContext.UserSavedItems.SingleOrDefaultAsync(x => x.UserId == userId && x.ItemId == itemId, cancellationToken);
     if (saved is null)
       return;
 
-    _dbContext.UserSavedItems.Remove(saved);
-    await _dbContext.SaveChangesAsync(cancellationToken);
+    dbContext.UserSavedItems.Remove(saved);
+    await dbContext.SaveChangesAsync(cancellationToken);
   }
 }

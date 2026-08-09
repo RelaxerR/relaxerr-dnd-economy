@@ -9,32 +9,39 @@ namespace DndEconomy.Infrastructure.Economy;
 /// <inheritdoc cref="IEconomyAdminService" />
 public sealed class EconomyAdminService : IEconomyAdminService
 {
-  private readonly ApplicationDbContext _dbContext;
+  private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
-  public EconomyAdminService(ApplicationDbContext dbContext)
+  public EconomyAdminService(IDbContextFactory<ApplicationDbContext> dbContextFactory)
   {
-    _dbContext = dbContext;
+    _dbContextFactory = dbContextFactory;
   }
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<CitySummary>> GetCitiesAsync(CancellationToken cancellationToken)
-    => await _dbContext.Cities.AsNoTracking()
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await dbContext.Cities.AsNoTracking()
       .OrderBy(x => x.Name)
       .Select(x => new CitySummary { Id = x.Id, Name = x.Name, Size = x.Size })
       .ToListAsync(cancellationToken);
+  }
 
   /// <inheritdoc />
   public async Task<Guid> CreateCityAsync(string name, CitySize size, CancellationToken cancellationToken)
   {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
     var city = new City { Name = name, Size = size };
-    _dbContext.Cities.Add(city);
-    await _dbContext.SaveChangesAsync(cancellationToken);
+    dbContext.Cities.Add(city);
+    await dbContext.SaveChangesAsync(cancellationToken);
     return city.Id;
   }
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<EconomySessionSummary>> GetSessionsAsync(CancellationToken cancellationToken)
-    => await _dbContext.EconomySessions.AsNoTracking()
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await dbContext.EconomySessions.AsNoTracking()
       .Include(x => x.City)
       .OrderByDescending(x => x.RealDate)
       .Select(x => new EconomySessionSummary
@@ -49,11 +56,14 @@ public sealed class EconomyAdminService : IEconomyAdminService
         SellCoefficient = x.SellCoefficient
       })
       .ToListAsync(cancellationToken);
+  }
 
   /// <inheritdoc />
   public async Task CreateSessionAsync(NewEconomySessionInput input, CancellationToken cancellationToken)
   {
-    _dbContext.EconomySessions.Add(new EconomySession
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    dbContext.EconomySessions.Add(new EconomySession
     {
       Name = input.Name,
       Description = input.Description,
@@ -65,6 +75,6 @@ public sealed class EconomyAdminService : IEconomyAdminService
       SellCoefficient = input.SellCoefficient
     });
 
-    await _dbContext.SaveChangesAsync(cancellationToken);
+    await dbContext.SaveChangesAsync(cancellationToken);
   }
 }

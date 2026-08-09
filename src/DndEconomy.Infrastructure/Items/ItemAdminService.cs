@@ -1,22 +1,25 @@
 using DndEconomy.Application.Items;
 using DndEconomy.Domain.Entities;
 using DndEconomy.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace DndEconomy.Infrastructure.Items;
 
 /// <inheritdoc cref="IItemAdminService" />
 public sealed class ItemAdminService : IItemAdminService
 {
-  private readonly ApplicationDbContext _dbContext;
+  private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
-  public ItemAdminService(ApplicationDbContext dbContext)
+  public ItemAdminService(IDbContextFactory<ApplicationDbContext> dbContextFactory)
   {
-    _dbContext = dbContext;
+    _dbContextFactory = dbContextFactory;
   }
 
   /// <inheritdoc />
   public async Task<Guid> CreateItemAsync(NewItemInput input, CancellationToken cancellationToken)
   {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
     var item = new Item
     {
       Category = input.Category,
@@ -29,8 +32,8 @@ public sealed class ItemAdminService : IItemAdminService
       IsPlayerSuggested = input.IsPlayerSuggested
     };
 
-    _dbContext.Items.Add(item);
-    await _dbContext.SaveChangesAsync(cancellationToken);
+    dbContext.Items.Add(item);
+    await dbContext.SaveChangesAsync(cancellationToken);
     return item.Id;
   }
 }

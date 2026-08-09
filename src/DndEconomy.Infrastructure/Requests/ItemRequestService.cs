@@ -13,16 +13,16 @@ namespace DndEconomy.Infrastructure.Requests;
 /// <inheritdoc cref="IItemRequestService" />
 public sealed class ItemRequestService : IItemRequestService
 {
-  private readonly ApplicationDbContext _dbContext;
+  private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
   private readonly UserManager<ApplicationUser> _userManager;
   private readonly INotificationService _notificationService;
   private readonly IItemAdminService _itemAdminService;
 
   public ItemRequestService(
-    ApplicationDbContext dbContext, UserManager<ApplicationUser> userManager,
+    IDbContextFactory<ApplicationDbContext> dbContextFactory, UserManager<ApplicationUser> userManager,
     INotificationService notificationService, IItemAdminService itemAdminService)
   {
-    _dbContext = dbContext;
+    _dbContextFactory = dbContextFactory;
     _userManager = userManager;
     _notificationService = notificationService;
     _itemAdminService = itemAdminService;
@@ -38,8 +38,11 @@ public sealed class ItemRequestService : IItemRequestService
       Description = description
     };
 
-    _dbContext.ItemRequests.Add(request);
-    await _dbContext.SaveChangesAsync(cancellationToken);
+    await using (var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
+    {
+      dbContext.ItemRequests.Add(request);
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
 
     var admins = await _userManager.GetUsersInRoleAsync(RoleNames.Admin);
     foreach (var admin in admins)
@@ -54,60 +57,86 @@ public sealed class ItemRequestService : IItemRequestService
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<ItemRequestSummary>> GetMyRequestsAsync(Guid userId, CancellationToken cancellationToken)
-    => await _dbContext.ItemRequests.AsNoTracking()
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await dbContext.ItemRequests.AsNoTracking()
       .Where(x => x.RequestedByUserId == userId)
       .OrderByDescending(x => x.CreatedAtUtc)
       .Select(ToSummary)
       .ToListAsync(cancellationToken);
+  }
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<ItemRequestSummary>> GetPendingAsync(CancellationToken cancellationToken)
-    => await _dbContext.ItemRequests.AsNoTracking()
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await dbContext.ItemRequests.AsNoTracking()
       .Where(x => x.Status == ItemRequestStatus.Pending)
       .OrderBy(x => x.CreatedAtUtc)
       .Select(ToSummary)
       .ToListAsync(cancellationToken);
+  }
 
   /// <inheritdoc />
   public async Task ApproveAsync(Guid requestId, Guid adminUserId, NewItemInput itemInput, CancellationToken cancellationToken)
   {
-    var request = await _dbContext.ItemRequests.SingleOrDefaultAsync(x => x.Id == requestId, cancellationToken);
-    if (request is null || request.Status != ItemRequestStatus.Pending)
-      return;
-
+    // CreateItemAsync берёт свой отдельный короткоживущий DbContext (через IItemAdminService),
+    // поэтому safe вызывать его между чтением и сохранением request — конфликта с dbContext ниже нет.
     var itemId = await _itemAdminService.CreateItemAsync(itemInput, cancellationToken);
 
-    request.Status = ItemRequestStatus.Approved;
-    request.ResultingItemId = itemId;
-    request.ReviewedByUserId = adminUserId;
-    request.ReviewedAtUtc = DateTime.UtcNow;
-    await _dbContext.SaveChangesAsync(cancellationToken);
+    Guid requestedByUserId;
+    string proposedName;
+
+    await using (var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
+    {
+      var request = await dbContext.ItemRequests.SingleOrDefaultAsync(x => x.Id == requestId, cancellationToken);
+      if (request is null || request.Status != ItemRequestStatus.Pending)
+        return;
+
+      request.Status = ItemRequestStatus.Approved;
+      request.ResultingItemId = itemId;
+      request.ReviewedByUserId = adminUserId;
+      request.ReviewedAtUtc = DateTime.UtcNow;
+      await dbContext.SaveChangesAsync(cancellationToken);
+
+      requestedByUserId = request.RequestedByUserId;
+      proposedName = request.ProposedName;
+    }
 
     await _notificationService.CreateAsync(
-      request.RequestedByUserId, NotificationType.ItemRequestApproved,
+      requestedByUserId, NotificationType.ItemRequestApproved,
       "Заявка одобрена",
-      $"Ваша заявка «{request.ProposedName}» одобрена и добавлена в каталог.",
-      relatedItemId: itemId, relatedItemRequestId: request.Id, cancellationToken);
+      $"Ваша заявка «{proposedName}» одобрена и добавлена в каталог.",
+      relatedItemId: itemId, relatedItemRequestId: requestId, cancellationToken);
   }
 
   /// <inheritdoc />
   public async Task RejectAsync(Guid requestId, Guid adminUserId, string comment, CancellationToken cancellationToken)
   {
-    var request = await _dbContext.ItemRequests.SingleOrDefaultAsync(x => x.Id == requestId, cancellationToken);
-    if (request is null || request.Status != ItemRequestStatus.Pending)
-      return;
+    Guid requestedByUserId;
+    string proposedName;
 
-    request.Status = ItemRequestStatus.Rejected;
-    request.ReviewComment = comment;
-    request.ReviewedByUserId = adminUserId;
-    request.ReviewedAtUtc = DateTime.UtcNow;
-    await _dbContext.SaveChangesAsync(cancellationToken);
+    await using (var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
+    {
+      var request = await dbContext.ItemRequests.SingleOrDefaultAsync(x => x.Id == requestId, cancellationToken);
+      if (request is null || request.Status != ItemRequestStatus.Pending)
+        return;
+
+      request.Status = ItemRequestStatus.Rejected;
+      request.ReviewComment = comment;
+      request.ReviewedByUserId = adminUserId;
+      request.ReviewedAtUtc = DateTime.UtcNow;
+      await dbContext.SaveChangesAsync(cancellationToken);
+
+      requestedByUserId = request.RequestedByUserId;
+      proposedName = request.ProposedName;
+    }
 
     await _notificationService.CreateAsync(
-      request.RequestedByUserId, NotificationType.ItemRequestRejected,
+      requestedByUserId, NotificationType.ItemRequestRejected,
       "Заявка отклонена",
-      $"Ваша заявка «{request.ProposedName}» отклонена. {comment}",
-      relatedItemId: null, relatedItemRequestId: request.Id, cancellationToken);
+      $"Ваша заявка «{proposedName}» отклонена. {comment}",
+      relatedItemId: null, relatedItemRequestId: requestId, cancellationToken);
   }
 
   private static readonly System.Linq.Expressions.Expression<Func<ItemRequest, ItemRequestSummary>> ToSummary = x => new ItemRequestSummary

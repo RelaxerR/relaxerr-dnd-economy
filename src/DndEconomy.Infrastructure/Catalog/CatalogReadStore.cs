@@ -14,11 +14,11 @@ public sealed class CatalogReadStore : ICatalogReadStore
 {
   #region Поля и конструктор
 
-  private readonly ApplicationDbContext _dbContext;
+  private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
-  public CatalogReadStore(ApplicationDbContext dbContext)
+  public CatalogReadStore(IDbContextFactory<ApplicationDbContext> dbContextFactory)
   {
-    _dbContext = dbContext;
+    _dbContextFactory = dbContextFactory;
   }
 
   #endregion
@@ -29,7 +29,9 @@ public sealed class CatalogReadStore : ICatalogReadStore
   public async Task<(IReadOnlyList<CatalogPricedRow> Rows, int TotalCount)> GetPageAsync(
     CatalogQuery query, ActiveSessionContext session, CancellationToken cancellationToken)
   {
-    var priced = BuildPricedQuery(session)
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var priced = BuildPricedQuery(dbContext, session)
       .Where(BuildFilterPredicate(query));
 
     if (query.OnlyAvailable == true)
@@ -59,19 +61,26 @@ public sealed class CatalogReadStore : ICatalogReadStore
 
   /// <inheritdoc />
   public async Task<CatalogPricedRow?> GetItemAsync(Guid itemId, ActiveSessionContext session, CancellationToken cancellationToken)
-    => await BuildPricedQuery(session)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await BuildPricedQuery(dbContext, session)
       .Where(x => x.ItemId == itemId)
       .SingleOrDefaultAsync(cancellationToken);
+  }
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<string>> GetDistinctCategoriesAsync(CancellationToken cancellationToken)
-    => await _dbContext.Items.AsNoTracking()
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await dbContext.Items.AsNoTracking()
       .Select(x => x.Category).Distinct().OrderBy(x => x).ToListAsync(cancellationToken);
+  }
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<string>> GetDistinctTypesAsync(string? category, CancellationToken cancellationToken)
   {
-    var items = _dbContext.Items.AsNoTracking();
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    var items = dbContext.Items.AsNoTracking();
     if (!string.IsNullOrWhiteSpace(category))
       items = items.Where(x => x.Category == category);
 
@@ -81,7 +90,8 @@ public sealed class CatalogReadStore : ICatalogReadStore
   /// <inheritdoc />
   public async Task<IReadOnlyList<string>> GetDistinctSubtypesAsync(string? type, CancellationToken cancellationToken)
   {
-    var items = _dbContext.Items.AsNoTracking();
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    var items = dbContext.Items.AsNoTracking();
     if (!string.IsNullOrWhiteSpace(type))
       items = items.Where(x => x.Type == type);
 
@@ -108,13 +118,13 @@ public sealed class CatalogReadStore : ICatalogReadStore
   /// LEFT JOIN на CityModifiers (по городу сессии) и SeasonModifiers (по сезону сессии) —
   /// коэффициент 1m, если для (Type, Subtype) модификатора нет, как и в EconomyPricingReadStore.
   /// </summary>
-  private IQueryable<CatalogPricedRow> BuildPricedQuery(ActiveSessionContext session)
+  private static IQueryable<CatalogPricedRow> BuildPricedQuery(ApplicationDbContext dbContext, ActiveSessionContext session)
   {
-    var cityModifiers = _dbContext.CityModifiers.Where(cm => cm.CityId == session.CityId);
-    var seasonModifiers = _dbContext.SeasonModifiers.Where(sm => sm.Season == session.Season);
+    var cityModifiers = dbContext.CityModifiers.Where(cm => cm.CityId == session.CityId);
+    var seasonModifiers = dbContext.SeasonModifiers.Where(sm => sm.Season == session.Season);
 
     return
-      from item in _dbContext.Items.AsNoTracking()
+      from item in dbContext.Items.AsNoTracking()
       join cityMod in cityModifiers
         on new { item.Type, item.Subtype } equals new { cityMod.Type, cityMod.Subtype } into cityModsJoin
       from cityMod in cityModsJoin.DefaultIfEmpty()

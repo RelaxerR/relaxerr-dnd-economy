@@ -31,8 +31,21 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
 - Кампания: **одна активная на сайт** (модель это допускает расширить позже без переписывания).
 - Reverse proxy на сервере — ещё не выяснено, что уже стоит перед Foundry VTT (nginx/Traefik/
   Caddy) — уточнить перед деплоем.
-- DDoS-защита: встроенный `RateLimiter` (глобальный sliding window + строгий на /login) как
-  первый рубеж, Cloudflare перед доменом — как второй, более надёжный.
+- DDoS-защита: встроенный `RateLimiter` (глобальный sliding window 100/мин на IP + строгий
+  fixed window 30/мин на IP для `/Account/Login`) как первый рубеж, Cloudflare перед доменом —
+  как второй, более надёжный. Проверено вручную под нагрузкой (`ConfigureRateLimiting` в
+  `Program.cs`) — burst-запросы к `/Account/Login` корректно получают 429 после 30-го запроса
+  в минуту, к прочим маршрутам — после 100-го (лимиты общие на IP, счётчик делится между
+  политиками). **Известное ограничение**: `UseRateLimiter()` защищает только HTTP-конвейер —
+  начальную загрузку страницы, статику, установление SignalR-соединения. После того как circuit
+  Blazor Server установлен (WebSocket), дальнейшие взаимодействия (клики, поиск, избранное)
+  идут через уже открытое соединение и НЕ проходят через этот middleware повторно на каждое
+  взаимодействие — значит спам-клики внутри уже открытого circuit'а этим лимитером не ограничены.
+  Осознанно не мигрировано на per-circuit/Hub-level лимитер (например, через `IHubFilter`):
+  сайт закрытый (только приглашённые игроки, самостоятельной регистрации нет), угроза
+  анонимного flood-а через уже открытый circuit несопоставима по цене риска с усложнением кода —
+  пересмотреть, если состав пользователей изменится (публичная регистрация, много незнакомых
+  друг другу игроков и т.п.).
 - Домен `relaxerr-dnd-economy.ru` куплен на Aeza, DNS не настроен.
 - **Auth без self-регистрации**: `AddIdentityCore` + явный `AddAuthentication().AddIdentityCookies()`
   (не полный `AddIdentity`) + `AddAuthorizationCore()` с secure-by-default `FallbackPolicy`
@@ -74,18 +87,20 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
 ## Известные проблемы / TODO
 
 - **DbContext concurrency в Blazor Server** (`System.InvalidOperationException: A second
-  operation was started on this context instance...`) — `ApplicationDbContext` зарегистрирован
-  через `AddDbContextFactory` (не просто `AddDbContext`): в Blazor Server Scoped-инжект означает
-  ОДИН экземпляр на весь circuit (SignalR-соединение), а не на HTTP-запрос, и `MainLayout`
-  (счётчик уведомлений — вызывается на КАЖДОЙ странице) конкурировал за общий DbContext с
-  запросом самой страницы (например, привело к падению `/Account/AccessDenied` с 500 сразу
-  после первого входа). Исправлено для этого — самого частого — случая: `NotificationService`
-  теперь берёт свой собственный короткоживущий контекст через `IDbContextFactory<ApplicationDbContext>`
-  вместо общего на circuit. **Остаточный риск**: все ОСТАЛЬНЫЕ Infrastructure-сервисы всё ещё
-  инжектят общий `ApplicationDbContext` напрямую (это по-прежнему поддерживается — `AddDbContextFactory`
-  регистрирует и обычный Scoped-доступ) — если КАКИЕ-ТО ДВА из них дёрнутся к БД одновременно на
-  одной странице (не через MainLayout), гонка может повториться. Если увидите такую 500-ошибку
-  ещё раз — тот сервис тоже нужно перевести на `IDbContextFactory` по тому же образцу.
+  operation was started on this context instance...`) — Scoped-инжект `ApplicationDbContext`
+  в Blazor Server означает ОДИН экземпляр на весь circuit (SignalR-соединение), а не на
+  HTTP-запрос, и любые два сервиса, дёрнувшиеся к БД одновременно на одной странице (например,
+  счётчик уведомлений в `MainLayout`, вызываемый на КАЖДОЙ странице, параллельно с запросом самой
+  страницы), конкурировали за общий контекст. **Исправлено полностью**: все Infrastructure-сервисы
+  (`NotificationService`, `CatalogReadStore`, `EconomyAdminService`, `EconomyPricingReadStore`,
+  `ItemAdminService`, `ItemRequestService`, `PlayerProfileService`, `AdminUserService`,
+  `ExcelEconomyImportService`) теперь берут собственный короткоживущий контекст через
+  `IDbContextFactory<ApplicationDbContext>` вместо общего на circuit — общий Scoped-инжект
+  `ApplicationDbContext` в коде проекта больше нигде не используется (только `AddDbContextFactory`
+  в `DependencyInjection.cs`, который регистрирует и то, и другое). Identity (`UserManager`/
+  `SignInManager`/`RoleManager`) по-прежнему использует общий Scoped-контекст через
+  `AddEntityFrameworkStores` — это библиотечный код ASP.NET Core Identity, отдельная история, если
+  когда-нибудь проявится гонка именно там.
 
 ## Дорожная карта
 

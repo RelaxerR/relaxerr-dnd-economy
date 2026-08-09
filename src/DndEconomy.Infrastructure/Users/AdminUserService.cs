@@ -10,25 +10,27 @@ namespace DndEconomy.Infrastructure.Users;
 /// <inheritdoc cref="IAdminUserService" />
 public sealed class AdminUserService : IAdminUserService
 {
-  private readonly ApplicationDbContext _dbContext;
+  private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
   private readonly UserManager<ApplicationUser> _userManager;
 
-  public AdminUserService(ApplicationDbContext dbContext, UserManager<ApplicationUser> userManager)
+  public AdminUserService(IDbContextFactory<ApplicationDbContext> dbContextFactory, UserManager<ApplicationUser> userManager)
   {
-    _dbContext = dbContext;
+    _dbContextFactory = dbContextFactory;
     _userManager = userManager;
   }
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<UserSummary>> GetUsersAsync(CancellationToken cancellationToken)
   {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
     // Одним запросом (без await внутри цикла на каждого пользователя) — на несколько await'ов
     // с одним и тем же DbContext в Blazor Server легко наткнуться на "second operation was
     // started..." при параллельном рендере (например, счётчик уведомлений в MainLayout).
-    var users = await _dbContext.Users.AsNoTracking().ToListAsync(cancellationToken);
+    var users = await dbContext.Users.AsNoTracking().ToListAsync(cancellationToken);
     var userRoles = await (
-      from ur in _dbContext.UserRoles
-      join r in _dbContext.Roles on ur.RoleId equals r.Id
+      from ur in dbContext.UserRoles
+      join r in dbContext.Roles on ur.RoleId equals r.Id
       select new { ur.UserId, RoleName = r.Name })
       .ToListAsync(cancellationToken);
 

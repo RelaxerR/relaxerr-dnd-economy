@@ -44,8 +44,10 @@ else
       <span>Продажа: @item.SellPrice.ToString("0.##")</span>
     </p>
 
-    <button class="btn btn--primary" @onclick="ToggleFavoriteAsync">
-      @(isFavorite ? "Убрать из избранного" : "Сохранить в избранное")
+    <button class="favorite-toggle" @onclick="ToggleFavoriteAsync" aria-pressed="@isFavorite"
+      title="@(isFavorite ? "Убрать из избранного" : "Сохранить в избранное")">
+      <span class="wax-seal @(isFavorite ? "wax-seal--sealed" : "")" aria-hidden="true">✺</span>
+      <span class="favorite-toggle__label">@(isFavorite ? "В избранном" : "Сохранить в избранное")</span>
     </button>
   </section>
 }
