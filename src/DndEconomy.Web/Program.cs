@@ -1,8 +1,11 @@
+using System.Net;
 using System.Threading.RateLimiting;
 using DndEconomy.Infrastructure;
 using DndEconomy.Infrastructure.Identity;
+using DndEconomy.Infrastructure.Persistence;
 using DndEconomy.Web.Components.Account;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 
@@ -38,6 +41,10 @@ builder.Services.AddRateLimiter(ConfigureRateLimiting);
 
 var app = builder.Build();
 
+// В Docker-деплое отдельного шага "выполнить миграции" нет — применяем при каждом старте,
+// это идемпотентно (EF пропускает уже применённые). До сидинга: без схемы сидить некуда.
+await app.Services.MigrateDatabaseAsync();
+
 // Идемпотентный сидинг ролей Admin/Player и первого администратора из секции AdminSeed
 // (см. IdentitySeeder) — до запуска хоста, чтобы им можно было залогиниться сразу.
 await app.Services.SeedIdentityDataAsync();
@@ -49,6 +56,21 @@ if (!app.Environment.IsDevelopment())
   app.UseExceptionHandler("/Error", createScopeForErrors: true);
   app.UseHsts();
 }
+
+// Приложение стоит за nginx в отдельном Docker-контейнере: без этого Request.Scheme/
+// RemoteIpAddress всегда были бы "http" и IP шлюза docker-сети (один и тот же для всех
+// клиентов) — UseHttpsRedirection зациклился бы, а партиционирование rate limiter'а по
+// RemoteIpAddress (см. ConfigureRateLimiting ниже) схлопнулось бы в общий счётчик на всех
+// посетителей сразу. KnownIPNetworks — весь диапазон дефолтных docker-бриджей (172.16.0.0/12)
+// плюс loopback, т.к. только nginx на хосте достаёт до этого порта (он опубликован только
+// на 127.0.0.1 — см. docker-compose.prod.yml).
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+  ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("172.16.0.0"), 12));
+forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Loopback, 8));
+app.UseForwardedHeaders(forwardedHeadersOptions);
 
 app.UseHttpsRedirection();
 app.UseSerilogRequestLogging();

@@ -12,6 +12,7 @@ obj/
 logs/
 appsettings.*.local.json
 *.pfx
+.env
 
 ## Артефакты публикации
 publish/
