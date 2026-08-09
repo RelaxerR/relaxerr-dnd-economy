@@ -1,0 +1,110 @@
+@page "/admin/economy/cities"
+@using System.ComponentModel.DataAnnotations
+@using DndEconomy.Application.Economy
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Domain.Enums
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IEconomyAdminService EconomyAdminService
+
+<PageTitle>Города — админка Relaxerr</PageTitle>
+
+<h1>Экономические сессии и города</h1>
+<AdminNav />
+<nav class="admin-subnav">
+  <a class="admin-subnav__link admin-subnav__link--active" href="/admin/economy/cities">Города</a>
+  <a class="admin-subnav__link" href="/admin/economy/sessions">Сессии</a>
+</nav>
+
+<div class="admin-two-col">
+  <section class="auth-card admin-two-col__wide">
+    <h2>Города</h2>
+    @if (cities is null)
+    {
+      <p>Загрузка...</p>
+    }
+    else if (cities.Count == 0)
+    {
+      <p class="catalog-meta">Городов пока нет.</p>
+    }
+    else
+    {
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Размер</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach (var city in cities)
+            {
+              <tr>
+                <td>@city.Name</td>
+                <td>@SizeLabel(city.Size)</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <section class="auth-card">
+    <h2>Добавить город</h2>
+    <EditForm Model="newCity" OnValidSubmit="CreateCityAsync" FormName="new-city">
+      <DataAnnotationsValidator />
+      <ValidationSummary class="validation-summary" />
+
+      <div class="form-field"><label>Название</label><InputText @bind-Value="newCity.Name" /></div>
+      <div class="form-field">
+        <label>Размер</label>
+        <InputSelect @bind-Value="newCity.Size">
+          <option value="@CitySize.Village">Деревня</option>
+          <option value="@CitySize.Town">Город</option>
+          <option value="@CitySize.Metropolis">Крупный город</option>
+        </InputSelect>
+      </div>
+      <button type="submit" class="btn btn--primary">Добавить город</button>
+    </EditForm>
+  </section>
+</div>
+
+@code {
+  private IReadOnlyList<CitySummary>? cities;
+
+  [SupplyParameterFromForm(FormName = "new-city")]
+  private NewCityModel newCity { get; set; } = default!;
+
+  protected override async Task OnInitializedAsync()
+  {
+    newCity ??= new();
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    cities = await EconomyAdminService.GetCitiesAsync(CancellationToken.None);
+  }
+
+  private async Task CreateCityAsync()
+  {
+    await EconomyAdminService.CreateCityAsync(newCity.Name, newCity.Size, CancellationToken.None);
+    newCity = new();
+    await ReloadAsync();
+  }
+
+  private static string SizeLabel(CitySize size) => size switch
+  {
+    CitySize.Village => "Деревня",
+    CitySize.Town => "Город",
+    CitySize.Metropolis => "Крупный город",
+    _ => size.ToString()
+  };
+
+  private sealed class NewCityModel
+  {
+    [Required] public string Name { get; set; } = "";
+    public CitySize Size { get; set; } = CitySize.Town;
+  }
+}

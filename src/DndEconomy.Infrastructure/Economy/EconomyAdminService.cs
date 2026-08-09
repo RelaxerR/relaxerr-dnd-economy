@@ -48,8 +48,10 @@ public sealed class EconomyAdminService : IEconomyAdminService
       {
         Id = x.Id,
         Name = x.Name,
+        Description = x.Description,
         RealDate = x.RealDate,
         GameDateLabel = x.GameDateLabel,
+        CityId = x.CityId,
         CityName = x.City != null ? x.City.Name : null,
         Season = x.Season,
         BaseCoefficient = x.BaseCoefficient,
@@ -75,6 +77,40 @@ public sealed class EconomyAdminService : IEconomyAdminService
       SellCoefficient = input.SellCoefficient
     });
 
+    await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task UpdateSessionAsync(Guid sessionId, NewEconomySessionInput input, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var session = await dbContext.EconomySessions.SingleOrDefaultAsync(x => x.Id == sessionId, cancellationToken);
+    if (session is null)
+      return;
+
+    session.Name = input.Name;
+    session.Description = input.Description;
+    session.RealDate = input.RealDate;
+    session.GameDateLabel = input.GameDateLabel;
+    session.CityId = input.CityId;
+    session.Season = input.Season;
+    session.BaseCoefficient = input.BaseCoefficient;
+    session.SellCoefficient = input.SellCoefficient;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task DeleteSessionAsync(Guid sessionId, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var session = await dbContext.EconomySessions.SingleOrDefaultAsync(x => x.Id == sessionId, cancellationToken);
+    if (session is null)
+      return;
+
+    dbContext.EconomySessions.Remove(session);
     await dbContext.SaveChangesAsync(cancellationToken);
   }
 }

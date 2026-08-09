@@ -383,3 +383,205 @@ body {
 .favorite-toggle__label {
   font-size: 0.95rem;
 }
+
+/* Профиль — избранное слева (поиск + скроллируемый список), заявки справа (см. ProfileIndex.razor) */
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.profile-grid .auth-card,
+.admin-two-col .auth-card {
+  max-width: none;
+}
+
+@media (max-width: 720px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.profile-favorites__search {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font: inherit;
+  margin-bottom: 12px;
+}
+
+.profile-favorites-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 520px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-favorite-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.profile-favorite-item__link {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-decoration: none;
+  color: var(--color-text);
+  min-width: 0;
+}
+
+.profile-favorite-item__remove {
+  flex: none;
+  background: rgba(255, 59, 48, 0.1);
+  color: #b3261e;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+/* Уведомления — скроллируемый список, чтобы длинная история не растягивала страницу
+   (см. NotificationsIndex.razor). */
+
+.notifications-list {
+  max-height: 640px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+/* Подсказка валюты у полей ввода стоимости — все расчёты идут в золотых монетах (см. CLAUDE.md) */
+
+.input-hint {
+  color: rgba(29, 29, 31, 0.5);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+/* Вкладки внутри /admin/economy/* — города и сессии разведены на отдельные страницы,
+   т.к. вместе список городов + список сессий + обе формы создания были слишком тесными. */
+
+.admin-subnav {
+  display: flex;
+  gap: 8px;
+  margin: -12px 0 24px;
+}
+
+.admin-subnav__link {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  text-decoration: none;
+  color: var(--color-text);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.admin-subnav__link--active {
+  background: rgba(139, 94, 52, 0.12);
+  color: var(--color-accent);
+  border-color: transparent;
+}
+
+/* Список слева + форма создания справа — общий паттерн для страниц админки
+   (пользователи, города, сессии), чтобы форма не отталкивала список вниз. */
+
+.admin-two-col {
+  display: grid;
+  grid-template-columns: minmax(320px, 2fr) minmax(280px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .admin-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-two-col__wide {
+  max-width: none;
+}
+
+/* overflow-x: auto вместо переноса колонок — на узкой карточке таблица сессий (7 колонок)
+   иначе вылезала за пределы .auth-card и наезжала на соседнюю карточку формы. */
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  white-space: nowrap;
+}
+
+.admin-table__row--current {
+  background: rgba(139, 94, 52, 0.06);
+}
+
+.admin-table--clickable tbody tr {
+  cursor: pointer;
+}
+
+.admin-table--clickable tbody tr:hover {
+  background: rgba(139, 94, 52, 0.08);
+}
+
+/* Модальное окно редактирования (см. AdminSessions.razor) */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(29, 29, 31, 0.4);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 2000;
+}
+
+.modal-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-large);
+  padding: 32px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+}
+
+.modal-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.modal-card__delete {
+  background: rgba(255, 59, 48, 0.1);
+  color: #b3261e;
+  margin-left: auto;
+}

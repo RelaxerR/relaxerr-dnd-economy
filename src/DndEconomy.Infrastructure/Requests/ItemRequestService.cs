@@ -1,5 +1,6 @@
 using DndEconomy.Application.Items;
 using DndEconomy.Application.Notifications;
+using DndEconomy.Application.Profile;
 using DndEconomy.Application.Requests;
 using DndEconomy.Domain.Constants;
 using DndEconomy.Domain.Entities;
@@ -17,15 +18,18 @@ public sealed class ItemRequestService : IItemRequestService
   private readonly UserManager<ApplicationUser> _userManager;
   private readonly INotificationService _notificationService;
   private readonly IItemAdminService _itemAdminService;
+  private readonly IPlayerProfileService _playerProfileService;
 
   public ItemRequestService(
     IDbContextFactory<ApplicationDbContext> dbContextFactory, UserManager<ApplicationUser> userManager,
-    INotificationService notificationService, IItemAdminService itemAdminService)
+    INotificationService notificationService, IItemAdminService itemAdminService,
+    IPlayerProfileService playerProfileService)
   {
     _dbContextFactory = dbContextFactory;
     _userManager = userManager;
     _notificationService = notificationService;
     _itemAdminService = itemAdminService;
+    _playerProfileService = playerProfileService;
   }
 
   /// <inheritdoc />
@@ -102,6 +106,10 @@ public sealed class ItemRequestService : IItemRequestService
       requestedByUserId = request.RequestedByUserId;
       proposedName = request.ProposedName;
     }
+
+    // Игрок предложил предмет — логично, что он же хочет его отслеживать, поэтому сразу
+    // кладём созданный предмет в избранное автору заявки, а не заставляем искать его в каталоге.
+    await _playerProfileService.AddFavoriteAsync(requestedByUserId, itemId, note: null, cancellationToken);
 
     await _notificationService.CreateAsync(
       requestedByUserId, NotificationType.ItemRequestApproved,

@@ -1,9 +1,11 @@
 @page "/admin/items/new"
 @using System.ComponentModel.DataAnnotations
+@using DndEconomy.Application.Catalog
 @using DndEconomy.Application.Items
 @using DndEconomy.Domain.Constants
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IItemAdminService ItemAdminService
+@inject ICatalogReadStore CatalogReadStore
 
 <PageTitle>Новый предмет — админка Relaxerr</PageTitle>
 
@@ -20,27 +22,56 @@
     <DataAnnotationsValidator />
     <ValidationSummary class="validation-summary" />
 
-    <div class="form-field"><label>Категория</label><InputText @bind-Value="model.Category" /></div>
-    <div class="form-field"><label>Тип</label><InputText @bind-Value="model.Type" /></div>
-    <div class="form-field"><label>Подтип</label><InputText @bind-Value="model.Subtype" /></div>
+    <div class="form-field"><label>Категория</label><InputText @bind-Value="model.Category" list="category-options" /></div>
+    <div class="form-field"><label>Тип</label><InputText @bind-Value="model.Type" list="type-options" /></div>
+    <div class="form-field"><label>Подтип</label><InputText @bind-Value="model.Subtype" list="subtype-options" /></div>
     <div class="form-field"><label>Название (рус.)</label><InputText @bind-Value="model.NameRu" /></div>
     <div class="form-field"><label>Название (англ., опц.)</label><InputText @bind-Value="model.NameEn" /></div>
-    <div class="form-field"><label>Базовая стоимость</label><InputNumber @bind-Value="model.BaseCost" /></div>
+    <div class="form-field">
+      <label>Базовая стоимость <span class="input-hint">(в золотых монетах, зм)</span></label>
+      <InputNumber @bind-Value="model.BaseCost" />
+    </div>
     <div class="form-field"><label>Вес</label><InputNumber @bind-Value="model.Weight" /></div>
 
     <button type="submit" class="btn btn--primary">Создать</button>
   </EditForm>
 </section>
 
+<datalist id="category-options">
+  @foreach (var category in categories)
+  {
+    <option value="@category" />
+  }
+</datalist>
+<datalist id="type-options">
+  @foreach (var type in types)
+  {
+    <option value="@type" />
+  }
+</datalist>
+<datalist id="subtype-options">
+  @foreach (var subtype in subtypes)
+  {
+    <option value="@subtype" />
+  }
+</datalist>
+
 @code {
   private string? createdMessage;
+  private IReadOnlyList<string> categories = [];
+  private IReadOnlyList<string> types = [];
+  private IReadOnlyList<string> subtypes = [];
 
   [SupplyParameterFromForm]
   private ItemModel model { get; set; } = default!;
 
-  protected override void OnInitialized()
+  protected override async Task OnInitializedAsync()
   {
     model ??= new();
+
+    categories = await CatalogReadStore.GetDistinctCategoriesAsync(CancellationToken.None);
+    types = await CatalogReadStore.GetDistinctTypesAsync(null, CancellationToken.None);
+    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
   }
 
   private async Task CreateAsync()

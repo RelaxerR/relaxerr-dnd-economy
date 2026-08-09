@@ -1,6 +1,7 @@
 @page "/catalog"
 @rendermode InteractiveServer
 @using DndEconomy.Application.Catalog
+@using DndEconomy.Application.Pricing
 @inject ICatalogQueryService CatalogQueryService
 @inject ICatalogReadStore CatalogReadStore
 @implements IDisposable
@@ -80,8 +81,8 @@ else
         }
 
         <span class="catalog-card__prices">
-          <span>Покупка: @(item.BuyPrice?.ToString("0.##") ?? "—")</span>
-          <span>Продажа: @item.SellPrice.ToString("0.##")</span>
+          <span>Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
+          <span>Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
         </span>
       </a>
     }

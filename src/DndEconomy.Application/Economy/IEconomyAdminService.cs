@@ -17,4 +17,10 @@ public interface IEconomyAdminService
   Task<IReadOnlyList<EconomySessionSummary>> GetSessionsAsync(CancellationToken cancellationToken);
 
   Task CreateSessionAsync(NewEconomySessionInput input, CancellationToken cancellationToken);
+
+  /// <summary>Обновляет существующую сессию (редактирование из карточки в админке).</summary>
+  Task UpdateSessionAsync(Guid sessionId, NewEconomySessionInput input, CancellationToken cancellationToken);
+
+  /// <summary>Удаляет сессию безвозвратно.</summary>
+  Task DeleteSessionAsync(Guid sessionId, CancellationToken cancellationToken);
 }

@@ -1,89 +1,110 @@
 @page "/profile"
+@rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
+@using DndEconomy.Application.Pricing
 @using DndEconomy.Application.Profile
 @using DndEconomy.Application.Requests
 @using DndEconomy.Domain.Enums
 @inject IPlayerProfileService PlayerProfileService
 @inject IItemRequestService ItemRequestService
+@inject ToastService ToastService
 
 <PageTitle>Мой профиль — Relaxerr</PageTitle>
+<ToastContainer />
 
 <h1>Мой профиль</h1>
 
-<section class="auth-card">
-  <h2>Избранное</h2>
-  @if (favorites is null)
-  {
-    <p>Загрузка...</p>
-  }
-  else if (favorites.Count == 0)
-  {
-    @* Место под иллюстрацию для пустого состояния — Midjourney: "an empty leather satchel
-       resting on old parchment map, wax seal stamp nearby, warm candlelight, minimalist
-       fantasy illustration, muted bronze and cream palette --ar 16:9 --v 6" *@
-    <p class="catalog-meta">Пока пусто — сохраняйте предметы из каталога.</p>
-  }
-  else
-  {
-    <div class="catalog-grid">
-      @foreach (var favorite in favorites)
-      {
-        <a class="catalog-card" href="@($"catalog/{favorite.ItemId}")">
-          <span class="catalog-card__name">@favorite.NameRu</span>
-          <span class="catalog-card__meta">@favorite.Category · @favorite.Type / @favorite.Subtype</span>
-          <span class="catalog-card__prices">
-            <span>Покупка: @(favorite.BuyPrice?.ToString("0.##") ?? "—")</span>
-            <span>Продажа: @(favorite.SellPrice?.ToString("0.##") ?? "—")</span>
-          </span>
-        </a>
-      }
-    </div>
-  }
-</section>
-
-<section class="auth-card">
-  <h2>Мои заявки на предметы</h2>
-  @if (myRequests is null)
-  {
-    <p>Загрузка...</p>
-  }
-  else if (myRequests.Count == 0)
-  {
-    <p class="catalog-meta">Заявок пока нет.</p>
-  }
-  else
-  {
-    @foreach (var request in myRequests)
+<div class="profile-grid">
+  <section class="auth-card">
+    <h2>Избранное</h2>
+    @if (favorites is null)
     {
-      <p class="catalog-meta">
-        <strong>@request.ProposedName</strong> — @StatusLabel(request.Status)
-        @if (!string.IsNullOrWhiteSpace(request.ReviewComment))
-        {
-          <text> (@request.ReviewComment)</text>
-        }
-      </p>
+      <p>Загрузка...</p>
     }
-  }
+    else if (favorites.Count == 0)
+    {
+      @* Место под иллюстрацию для пустого состояния — Midjourney: "an empty leather satchel
+         resting on old parchment map, wax seal stamp nearby, warm candlelight, minimalist
+         fantasy illustration, muted bronze and cream palette --ar 16:9 --v 6" *@
+      <p class="catalog-meta">Пока пусто — сохраняйте предметы из каталога.</p>
+    }
+    else
+    {
+      <input type="search" class="profile-favorites__search" placeholder="Поиск в избранном..."
+        value="@favoriteSearchTerm" @oninput="OnFavoriteSearchInput" />
 
-  <h3>Подать новую заявку</h3>
-  <EditForm Model="newRequest" OnValidSubmit="SubmitRequestAsync" FormName="item-request">
-    <DataAnnotationsValidator />
-    <ValidationSummary class="validation-summary" />
+      var visibleFavorites = FilteredFavorites();
+      @if (visibleFavorites.Count == 0)
+      {
+        <p class="catalog-meta">Ничего не найдено по запросу «@favoriteSearchTerm».</p>
+      }
+      else
+      {
+        <ul class="profile-favorites-list">
+          @foreach (var favorite in visibleFavorites)
+          {
+            <li class="profile-favorite-item">
+              <a class="profile-favorite-item__link" href="@($"catalog/{favorite.ItemId}")">
+                <span class="catalog-card__name">@favorite.NameRu</span>
+                <span class="catalog-card__meta">@favorite.Category · @favorite.Type / @favorite.Subtype</span>
+                <span class="catalog-card__prices">
+                  <span>Покупка: @(favorite.BuyPrice is not null ? CurrencyFormatter.Format(favorite.BuyPrice.Value) : "—")</span>
+                  <span>Продажа: @(favorite.SellPrice is not null ? CurrencyFormatter.Format(favorite.SellPrice.Value) : "—")</span>
+                </span>
+              </a>
+              <button class="btn profile-favorite-item__remove" title="Удалить из избранного"
+                @onclick="() => RemoveFavoriteAsync(favorite.ItemId)">Удалить</button>
+            </li>
+          }
+        </ul>
+      }
+    }
+  </section>
 
-    <div class="form-field">
-      <label for="ProposedName">Название предмета</label>
-      <InputText @bind-Value="newRequest.ProposedName" id="ProposedName" />
-    </div>
+  <section class="auth-card">
+    <h2>Мои заявки на предметы</h2>
+    @if (myRequests is null)
+    {
+      <p>Загрузка...</p>
+    }
+    else if (myRequests.Count == 0)
+    {
+      <p class="catalog-meta">Заявок пока нет.</p>
+    }
+    else
+    {
+      @foreach (var request in myRequests)
+      {
+        <p class="catalog-meta">
+          <strong>@request.ProposedName</strong> — @StatusLabel(request.Status)
+          @if (!string.IsNullOrWhiteSpace(request.ReviewComment))
+          {
+            <text> (@request.ReviewComment)</text>
+          }
+        </p>
+      }
+    }
 
-    <div class="form-field">
-      <label for="Description">Описание/контекст (необязательно)</label>
-      <InputTextArea @bind-Value="newRequest.Description" id="Description" />
-    </div>
+    <h3>Подать новую заявку</h3>
+    <EditForm Model="newRequest" OnValidSubmit="SubmitRequestAsync">
+      <DataAnnotationsValidator />
+      <ValidationSummary class="validation-summary" />
 
-    <button type="submit" class="btn btn--primary">Отправить заявку</button>
-  </EditForm>
-</section>
+      <div class="form-field">
+        <label for="ProposedName">Название предмета</label>
+        <InputText @bind-Value="newRequest.ProposedName" id="ProposedName" />
+      </div>
+
+      <div class="form-field">
+        <label for="Description">Описание/контекст (необязательно)</label>
+        <InputTextArea @bind-Value="newRequest.Description" id="Description" />
+      </div>
+
+      <button type="submit" class="btn btn--primary">Отправить заявку</button>
+    </EditForm>
+  </section>
+</div>
 
 @code {
   [CascadingParameter]
@@ -92,14 +113,12 @@
   private Guid userId;
   private IReadOnlyList<FavoriteItemViewModel>? favorites;
   private IReadOnlyList<ItemRequestSummary>? myRequests;
+  private string favoriteSearchTerm = "";
 
-  [SupplyParameterFromForm]
-  private NewRequestModel newRequest { get; set; } = default!;
+  private NewRequestModel newRequest = new();
 
   protected override async Task OnInitializedAsync()
   {
-    newRequest ??= new();
-
     if (AuthenticationStateTask is null)
       return;
 
@@ -117,11 +136,42 @@
     myRequests = await ItemRequestService.GetMyRequestsAsync(userId, CancellationToken.None);
   }
 
+  private void OnFavoriteSearchInput(ChangeEventArgs e)
+  {
+    favoriteSearchTerm = e.Value?.ToString() ?? "";
+  }
+
+  private IReadOnlyList<FavoriteItemViewModel> FilteredFavorites()
+  {
+    if (favorites is null)
+      return [];
+
+    if (string.IsNullOrWhiteSpace(favoriteSearchTerm))
+      return favorites;
+
+    return favorites
+      .Where(f =>
+        f.NameRu.Contains(favoriteSearchTerm, StringComparison.OrdinalIgnoreCase) ||
+        (f.NameEn?.Contains(favoriteSearchTerm, StringComparison.OrdinalIgnoreCase) ?? false) ||
+        f.Category.Contains(favoriteSearchTerm, StringComparison.OrdinalIgnoreCase) ||
+        f.Type.Contains(favoriteSearchTerm, StringComparison.OrdinalIgnoreCase) ||
+        f.Subtype.Contains(favoriteSearchTerm, StringComparison.OrdinalIgnoreCase))
+      .ToList();
+  }
+
+  private async Task RemoveFavoriteAsync(Guid itemId)
+  {
+    await PlayerProfileService.RemoveFavoriteAsync(userId, itemId, CancellationToken.None);
+    favorites = await PlayerProfileService.GetFavoritesAsync(userId, CancellationToken.None);
+    ToastService.ShowSuccess("Убрано из избранного");
+  }
+
   private async Task SubmitRequestAsync()
   {
     await ItemRequestService.SubmitAsync(userId, newRequest.ProposedName, newRequest.Description, CancellationToken.None);
     newRequest = new();
     await ReloadAsync();
+    ToastService.ShowSuccess("Заявка отправлена");
   }
 
   private static string StatusLabel(ItemRequestStatus status) => status switch

@@ -1,0 +1,299 @@
+@page "/admin/economy/sessions"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using DndEconomy.Application.Economy
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Domain.Enums
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IEconomyAdminService EconomyAdminService
+@inject IJSRuntime JSRuntime
+@inject ToastService ToastService
+
+<PageTitle>Сессии — админка Relaxerr</PageTitle>
+<ToastContainer />
+
+<h1>Экономические сессии и города</h1>
+<AdminNav />
+<nav class="admin-subnav">
+  <a class="admin-subnav__link" href="/admin/economy/cities">Города</a>
+  <a class="admin-subnav__link admin-subnav__link--active" href="/admin/economy/sessions">Сессии</a>
+</nav>
+
+<div class="admin-two-col">
+  <section class="auth-card admin-two-col__wide">
+    <h2>Сессии</h2>
+    <p class="catalog-meta">
+      Текущая сессия — с наибольшей реальной датой не позже сегодня, выделена ниже.
+      Кликните по строке, чтобы отредактировать или удалить сессию.
+    </p>
+    @if (sessions is null)
+    {
+      <p>Загрузка...</p>
+    }
+    else if (sessions.Count == 0)
+    {
+      <p class="catalog-meta">Сессий пока нет.</p>
+    }
+    else
+    {
+      <div class="admin-table-wrap">
+        <table class="admin-table admin-table--clickable">
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Дата</th>
+              <th>Игровая дата</th>
+              <th>Город</th>
+              <th>Сезон</th>
+              <th>×База</th>
+              <th>×Продажа</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach (var session in sessions)
+            {
+              <tr class="@(session.Id == currentSessionId ? "admin-table__row--current" : "")"
+                @onclick="() => OpenEditModal(session)">
+                <td>
+                  @session.Name
+                  @if (session.Id == currentSessionId)
+                  {
+                    <span class="badge badge--player-suggested">Текущая</span>
+                  }
+                </td>
+                <td>@session.RealDate</td>
+                <td>@session.GameDateLabel</td>
+                <td>@(session.CityName ?? "—")</td>
+                <td>@SeasonLabel(session.Season)</td>
+                <td>×@session.BaseCoefficient</td>
+                <td>×@session.SellCoefficient</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <section class="auth-card">
+    <h2>Создать сессию</h2>
+    <EditForm Model="newSession" OnValidSubmit="CreateSessionAsync">
+      <DataAnnotationsValidator />
+      <ValidationSummary class="validation-summary" />
+
+      <div class="form-field"><label>Название</label><InputText @bind-Value="newSession.Name" /></div>
+      <div class="form-field"><label>Дата (реальная)</label><InputDate @bind-Value="newSession.RealDate" /></div>
+      <div class="form-field"><label>Игровая дата</label><InputText @bind-Value="newSession.GameDateLabel" /></div>
+      <div class="form-field">
+        <label>Город</label>
+        <InputSelect @bind-Value="newSession.CityId">
+          <option value="">—</option>
+          @if (cities is not null)
+          {
+            @foreach (var city in cities)
+            {
+              <option value="@city.Id">@city.Name</option>
+            }
+          }
+        </InputSelect>
+      </div>
+      <div class="form-field">
+        <label>Сезон</label>
+        <InputSelect @bind-Value="newSession.Season">
+          <option value="@Season.Spring">Весна</option>
+          <option value="@Season.Summer">Лето</option>
+          <option value="@Season.Autumn">Осень</option>
+          <option value="@Season.Winter">Зима</option>
+        </InputSelect>
+      </div>
+      <div class="form-field"><label>Коэффициент сессии</label><InputNumber @bind-Value="newSession.BaseCoefficient" /></div>
+      <div class="form-field"><label>Коэффициент продажи</label><InputNumber @bind-Value="newSession.SellCoefficient" /></div>
+
+      <button type="submit" class="btn btn--primary">Создать сессию</button>
+    </EditForm>
+  </section>
+</div>
+
+@if (editingSession is not null)
+{
+  <div class="modal-backdrop" @onclick="CloseEditModal">
+    <div class="modal-card" @onclick:stopPropagation="true">
+      <h2>Редактировать сессию</h2>
+      <EditForm Model="editingSession" OnValidSubmit="SaveEditAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="validation-summary" />
+
+        <div class="form-field"><label>Название</label><InputText @bind-Value="editingSession.Name" /></div>
+        <div class="form-field"><label>Дата (реальная)</label><InputDate @bind-Value="editingSession.RealDate" /></div>
+        <div class="form-field"><label>Игровая дата</label><InputText @bind-Value="editingSession.GameDateLabel" /></div>
+        <div class="form-field">
+          <label>Город</label>
+          <InputSelect @bind-Value="editingSession.CityId">
+            <option value="">—</option>
+            @if (cities is not null)
+            {
+              @foreach (var city in cities)
+              {
+                <option value="@city.Id">@city.Name</option>
+              }
+            }
+          </InputSelect>
+        </div>
+        <div class="form-field">
+          <label>Сезон</label>
+          <InputSelect @bind-Value="editingSession.Season">
+            <option value="@Season.Spring">Весна</option>
+            <option value="@Season.Summer">Лето</option>
+            <option value="@Season.Autumn">Осень</option>
+            <option value="@Season.Winter">Зима</option>
+          </InputSelect>
+        </div>
+        <div class="form-field"><label>Коэффициент сессии</label><InputNumber @bind-Value="editingSession.BaseCoefficient" /></div>
+        <div class="form-field"><label>Коэффициент продажи</label><InputNumber @bind-Value="editingSession.SellCoefficient" /></div>
+
+        <div class="modal-card__actions">
+          <button type="submit" class="btn btn--primary">Сохранить</button>
+          <button type="button" class="btn" @onclick="CloseEditModal">Отмена</button>
+          <button type="button" class="btn modal-card__delete" @onclick="DeleteEditingSessionAsync">Удалить сессию</button>
+        </div>
+      </EditForm>
+    </div>
+  </div>
+}
+
+@code {
+  private IReadOnlyList<CitySummary>? cities;
+  private IReadOnlyList<EconomySessionSummary>? sessions;
+  private Guid? currentSessionId;
+  private NewSessionModel newSession = new() { RealDate = DateTime.Today };
+
+  private Guid? editingSessionId;
+  private EditSessionModel? editingSession;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    cities = await EconomyAdminService.GetCitiesAsync(CancellationToken.None);
+    sessions = await EconomyAdminService.GetSessionsAsync(CancellationToken.None);
+
+    var today = DateOnly.FromDateTime(DateTime.Today);
+    currentSessionId = sessions
+      .Where(s => s.RealDate <= today)
+      .OrderByDescending(s => s.RealDate)
+      .FirstOrDefault()?.Id;
+  }
+
+  private async Task CreateSessionAsync()
+  {
+    Guid? cityId = Guid.TryParse(newSession.CityId, out var parsed) ? parsed : null;
+
+    await EconomyAdminService.CreateSessionAsync(new NewEconomySessionInput
+    {
+      Name = newSession.Name,
+      RealDate = DateOnly.FromDateTime(newSession.RealDate),
+      GameDateLabel = newSession.GameDateLabel,
+      CityId = cityId,
+      Season = newSession.Season,
+      BaseCoefficient = newSession.BaseCoefficient,
+      SellCoefficient = newSession.SellCoefficient
+    }, CancellationToken.None);
+
+    newSession = new() { RealDate = DateTime.Today };
+    await ReloadAsync();
+    ToastService.ShowSuccess("Сессия создана");
+  }
+
+  private void OpenEditModal(EconomySessionSummary session)
+  {
+    editingSessionId = session.Id;
+    editingSession = new EditSessionModel
+    {
+      Name = session.Name,
+      RealDate = session.RealDate.ToDateTime(TimeOnly.MinValue),
+      GameDateLabel = session.GameDateLabel,
+      CityId = session.CityId?.ToString() ?? "",
+      Season = session.Season,
+      BaseCoefficient = session.BaseCoefficient,
+      SellCoefficient = session.SellCoefficient
+    };
+  }
+
+  private void CloseEditModal()
+  {
+    editingSessionId = null;
+    editingSession = null;
+  }
+
+  private async Task SaveEditAsync()
+  {
+    if (editingSessionId is null || editingSession is null)
+      return;
+
+    Guid? cityId = Guid.TryParse(editingSession.CityId, out var parsed) ? parsed : null;
+
+    await EconomyAdminService.UpdateSessionAsync(editingSessionId.Value, new NewEconomySessionInput
+    {
+      Name = editingSession.Name,
+      RealDate = DateOnly.FromDateTime(editingSession.RealDate),
+      GameDateLabel = editingSession.GameDateLabel,
+      CityId = cityId,
+      Season = editingSession.Season,
+      BaseCoefficient = editingSession.BaseCoefficient,
+      SellCoefficient = editingSession.SellCoefficient
+    }, CancellationToken.None);
+
+    CloseEditModal();
+    await ReloadAsync();
+    ToastService.ShowSuccess("Сессия обновлена");
+  }
+
+  private async Task DeleteEditingSessionAsync()
+  {
+    if (editingSessionId is null)
+      return;
+
+    var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Удалить эту сессию безвозвратно?");
+    if (!confirmed)
+      return;
+
+    await EconomyAdminService.DeleteSessionAsync(editingSessionId.Value, CancellationToken.None);
+    CloseEditModal();
+    await ReloadAsync();
+    ToastService.ShowSuccess("Сессия удалена");
+  }
+
+  private static string SeasonLabel(Season season) => season switch
+  {
+    Season.Spring => "Весна",
+    Season.Summer => "Лето",
+    Season.Autumn => "Осень",
+    Season.Winter => "Зима",
+    _ => season.ToString()
+  };
+
+  private sealed class NewSessionModel
+  {
+    [Required] public string Name { get; set; } = "";
+    public DateTime RealDate { get; set; }
+    [Required] public string GameDateLabel { get; set; } = "";
+    public string CityId { get; set; } = "";
+    public Season Season { get; set; } = Season.Spring;
+    public decimal BaseCoefficient { get; set; } = 1m;
+    public decimal SellCoefficient { get; set; } = 0.9m;
+  }
+
+  private sealed class EditSessionModel
+  {
+    [Required] public string Name { get; set; } = "";
+    public DateTime RealDate { get; set; }
+    [Required] public string GameDateLabel { get; set; } = "";
+    public string CityId { get; set; } = "";
+    public Season Season { get; set; }
+    public decimal BaseCoefficient { get; set; }
+    public decimal SellCoefficient { get; set; }
+  }
+}

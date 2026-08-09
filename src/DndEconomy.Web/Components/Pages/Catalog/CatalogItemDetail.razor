@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using System.Security.Claims
 @using DndEconomy.Application.Catalog
+@using DndEconomy.Application.Pricing
 @using DndEconomy.Application.Profile
 @inject ICatalogQueryService CatalogQueryService
 @inject IPlayerProfileService PlayerProfileService
@@ -43,8 +44,8 @@ else
     }
 
     <p class="catalog-card__prices">
-      <span>Покупка: @(item.BuyPrice?.ToString("0.##") ?? "—")</span>
-      <span>Продажа: @item.SellPrice.ToString("0.##")</span>
+      <span>Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
+      <span>Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
     </p>
 
     <button class="favorite-toggle" @onclick="ToggleFavoriteAsync" aria-pressed="@isFavorite"

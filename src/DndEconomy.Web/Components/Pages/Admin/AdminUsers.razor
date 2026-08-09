@@ -21,49 +21,51 @@
   </div>
 }
 
-<section class="auth-card">
-  <h2>Пригласить игрока</h2>
-  <EditForm Model="newUser" OnValidSubmit="InviteAsync" FormName="invite-user">
-    <DataAnnotationsValidator />
-    <ValidationSummary class="validation-summary" />
-
-    <div class="form-field">
-      <label for="Email">Email</label>
-      <InputText @bind-Value="newUser.Email" id="Email" />
-    </div>
-    <div class="form-field">
-      <label for="DisplayName">Отображаемое имя</label>
-      <InputText @bind-Value="newUser.DisplayName" id="DisplayName" />
-    </div>
-    <div class="form-field">
-      <label for="TemporaryPassword">Временный пароль</label>
-      <InputText @bind-Value="newUser.TemporaryPassword" id="TemporaryPassword" />
-    </div>
-
-    <button type="submit" class="btn btn--primary">Создать</button>
-  </EditForm>
-</section>
-
-<section class="auth-card">
-  <h2>Все пользователи</h2>
-  @if (users is null)
-  {
-    <p>Загрузка...</p>
-  }
-  else
-  {
-    @foreach (var user in users)
+<div class="admin-two-col">
+  <section class="auth-card admin-two-col__wide">
+    <h2>Все пользователи</h2>
+    @if (users is null)
     {
-      <p class="catalog-meta">
-        <strong>@user.DisplayName</strong> (@user.Email) — @string.Join(", ", user.Roles)
-        @if (user.MustChangePassword)
-        {
-          <text> · ждёт смены временного пароля</text>
-        }
-      </p>
+      <p>Загрузка...</p>
     }
-  }
-</section>
+    else
+    {
+      @foreach (var user in users)
+      {
+        <p class="catalog-meta">
+          <strong>@user.DisplayName</strong> (@user.Email) — @string.Join(", ", user.Roles)
+          @if (user.MustChangePassword)
+          {
+            <text> · ждёт смены временного пароля</text>
+          }
+        </p>
+      }
+    }
+  </section>
+
+  <section class="auth-card">
+    <h2>Пригласить игрока</h2>
+    <EditForm Model="newUser" OnValidSubmit="InviteAsync" FormName="invite-user">
+      <DataAnnotationsValidator />
+      <ValidationSummary class="validation-summary" />
+
+      <div class="form-field">
+        <label for="Email">Email</label>
+        <InputText @bind-Value="newUser.Email" id="Email" />
+      </div>
+      <div class="form-field">
+        <label for="DisplayName">Отображаемое имя</label>
+        <InputText @bind-Value="newUser.DisplayName" id="DisplayName" />
+      </div>
+      <div class="form-field">
+        <label for="TemporaryPassword">Временный пароль</label>
+        <InputText @bind-Value="newUser.TemporaryPassword" id="TemporaryPassword" />
+      </div>
+
+      <button type="submit" class="btn btn--primary">Создать</button>
+    </EditForm>
+  </section>
+</div>
 
 @code {
   [CascadingParameter]

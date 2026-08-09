@@ -2,11 +2,13 @@
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
+@using DndEconomy.Application.Catalog
 @using DndEconomy.Application.Items
 @using DndEconomy.Application.Requests
 @using DndEconomy.Domain.Constants
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IItemRequestService ItemRequestService
+@inject ICatalogReadStore CatalogReadStore
 @inject ToastService ToastService
 
 <PageTitle>Заявки на предметы — админка Relaxerr</PageTitle>
@@ -40,12 +42,15 @@ else
           <DataAnnotationsValidator />
           <ValidationSummary class="validation-summary" />
 
-          <div class="form-field"><label>Категория</label><InputText @bind-Value="newItem.Category" /></div>
-          <div class="form-field"><label>Тип</label><InputText @bind-Value="newItem.Type" /></div>
-          <div class="form-field"><label>Подтип</label><InputText @bind-Value="newItem.Subtype" /></div>
+          <div class="form-field"><label>Категория</label><InputText @bind-Value="newItem.Category" list="category-options" /></div>
+          <div class="form-field"><label>Тип</label><InputText @bind-Value="newItem.Type" list="type-options" /></div>
+          <div class="form-field"><label>Подтип</label><InputText @bind-Value="newItem.Subtype" list="subtype-options" /></div>
           <div class="form-field"><label>Название (рус.)</label><InputText @bind-Value="newItem.NameRu" /></div>
           <div class="form-field"><label>Название (англ., опц.)</label><InputText @bind-Value="newItem.NameEn" /></div>
-          <div class="form-field"><label>Базовая стоимость</label><InputNumber @bind-Value="newItem.BaseCost" /></div>
+          <div class="form-field">
+            <label>Базовая стоимость <span class="input-hint">(в золотых монетах, зм)</span></label>
+            <InputNumber @bind-Value="newItem.BaseCost" />
+          </div>
           <div class="form-field"><label>Вес</label><InputNumber @bind-Value="newItem.Weight" /></div>
 
           <button type="submit" class="btn btn--primary">Одобрить и создать предмет</button>
@@ -61,16 +66,41 @@ else
   }
 }
 
+<datalist id="category-options">
+  @foreach (var category in categories)
+  {
+    <option value="@category" />
+  }
+</datalist>
+<datalist id="type-options">
+  @foreach (var type in types)
+  {
+    <option value="@type" />
+  }
+</datalist>
+<datalist id="subtype-options">
+  @foreach (var subtype in subtypes)
+  {
+    <option value="@subtype" />
+  }
+</datalist>
+
 @code {
   [CascadingParameter]
   private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
   private IReadOnlyList<ItemRequestSummary>? requests;
+  private IReadOnlyList<string> categories = [];
+  private IReadOnlyList<string> types = [];
+  private IReadOnlyList<string> subtypes = [];
   private Guid? activeRequestId;
   private NewItemModel newItem = new();
 
   protected override async Task OnInitializedAsync()
   {
+    categories = await CatalogReadStore.GetDistinctCategoriesAsync(CancellationToken.None);
+    types = await CatalogReadStore.GetDistinctTypesAsync(null, CancellationToken.None);
+    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
     await ReloadAsync();
   }
 

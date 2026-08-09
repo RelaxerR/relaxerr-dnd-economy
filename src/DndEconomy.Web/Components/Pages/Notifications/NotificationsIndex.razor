@@ -18,17 +18,19 @@ else if (notifications.Count == 0)
 }
 else
 {
-  @foreach (var notification in notifications)
-  {
-    <section class="auth-card @(notification.IsRead ? "" : "status-message--success")">
-      <strong>@notification.Title</strong>
-      <p>@notification.Message</p>
-      @if (!notification.IsRead)
-      {
-        <button class="btn" @onclick="() => MarkAsReadAsync(notification.Id)">Прочитано</button>
-      }
-    </section>
-  }
+  <div class="notifications-list">
+    @foreach (var notification in notifications)
+    {
+      <section class="auth-card @(notification.IsRead ? "" : "status-message--success")">
+        <strong>@notification.Title</strong>
+        <p>@notification.Message</p>
+        @if (!notification.IsRead)
+        {
+          <button class="btn" @onclick="() => MarkAsReadAsync(notification.Id)">Прочитано</button>
+        }
+      </section>
+    }
+  </div>
 }
 
 @code {
