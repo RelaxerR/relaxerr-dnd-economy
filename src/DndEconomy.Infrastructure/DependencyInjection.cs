@@ -86,8 +86,10 @@ public static class DependencyInjection
         options.Password.RequireUppercase = false;
         options.Password.RequireLowercase = false;
         options.User.RequireUniqueEmail = true;
-        options.Lockout.MaxFailedAccessAttempts = 5;
-        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(10);
+        // Поднято с 5/10мин — на этапе разработки/приёмки лишние опечатки при вводе временного
+        // пароля не должны надолго блокировать единственного администратора.
+        options.Lockout.MaxFailedAccessAttempts = 15;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(2);
       })
       .AddRoles<IdentityRole<Guid>>()
       .AddEntityFrameworkStores<ApplicationDbContext>()

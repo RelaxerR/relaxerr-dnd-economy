@@ -88,12 +88,14 @@ static void ConfigureRateLimiting(RateLimiterOptions options)
         QueueLimit = 0
       }));
 
+  // Поднято с 5/мин — этот лимит считает КАЖДЫЙ GET/POST на /Account/Login, включая
+  // повторные загрузки страницы при ручном тестировании, а не только попытки входа.
   options.AddPolicy("login", httpContext =>
     RateLimitPartition.GetFixedWindowLimiter(
       partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
       factory: _ => new FixedWindowRateLimiterOptions
       {
-        PermitLimit = 5,
+        PermitLimit = 30,
         Window = TimeSpan.FromMinutes(1),
         QueueLimit = 0
       }));
