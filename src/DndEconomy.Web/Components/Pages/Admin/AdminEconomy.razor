@@ -21,7 +21,7 @@
     }
   }
 
-  <EditForm Model="newCity" OnValidSubmit="CreateCityAsync">
+  <EditForm Model="newCity" OnValidSubmit="CreateCityAsync" FormName="new-city">
     <DataAnnotationsValidator />
     <div class="form-field"><label>Название</label><InputText @bind-Value="newCity.Name" /></div>
     <div class="form-field">
@@ -49,7 +49,7 @@
     }
   }
 
-  <EditForm Model="newSession" OnValidSubmit="CreateSessionAsync">
+  <EditForm Model="newSession" OnValidSubmit="CreateSessionAsync" FormName="new-session">
     <DataAnnotationsValidator />
     <ValidationSummary class="validation-summary" />
 
@@ -88,11 +88,18 @@
 @code {
   private IReadOnlyList<CitySummary>? cities;
   private IReadOnlyList<EconomySessionSummary>? sessions;
-  private NewCityModel newCity = new();
-  private NewSessionModel newSession = new() { RealDate = DateTime.Today };
+
+  [SupplyParameterFromForm(FormName = "new-city")]
+  private NewCityModel newCity { get; set; } = default!;
+
+  [SupplyParameterFromForm(FormName = "new-session")]
+  private NewSessionModel newSession { get; set; } = default!;
 
   protected override async Task OnInitializedAsync()
   {
+    newCity ??= new();
+    newSession ??= new() { RealDate = DateTime.Today };
+
     await ReloadAsync();
   }
 

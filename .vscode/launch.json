@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "DndEconomy.Web",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/DndEconomy.Web/bin/Debug/net10.0/DndEconomy.Web.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/DndEconomy.Web",
+      "stopAtEntry": false,
+      "justMyCode": false,
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+      }
+    }
+  ]
+}

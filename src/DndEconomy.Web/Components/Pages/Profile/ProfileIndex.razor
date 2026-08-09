@@ -67,7 +67,7 @@
   }
 
   <h3>Подать новую заявку</h3>
-  <EditForm Model="newRequest" OnValidSubmit="SubmitRequestAsync">
+  <EditForm Model="newRequest" OnValidSubmit="SubmitRequestAsync" FormName="item-request">
     <DataAnnotationsValidator />
     <ValidationSummary class="validation-summary" />
 
@@ -92,10 +92,14 @@
   private Guid userId;
   private IReadOnlyList<FavoriteItemViewModel>? favorites;
   private IReadOnlyList<ItemRequestSummary>? myRequests;
-  private NewRequestModel newRequest = new();
+
+  [SupplyParameterFromForm]
+  private NewRequestModel newRequest { get; set; } = default!;
 
   protected override async Task OnInitializedAsync()
   {
+    newRequest ??= new();
+
     if (AuthenticationStateTask is null)
       return;
 

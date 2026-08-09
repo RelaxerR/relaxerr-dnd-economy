@@ -23,7 +23,7 @@
 
 <section class="auth-card">
   <h2>Пригласить игрока</h2>
-  <EditForm Model="newUser" OnValidSubmit="InviteAsync">
+  <EditForm Model="newUser" OnValidSubmit="InviteAsync" FormName="invite-user">
     <DataAnnotationsValidator />
     <ValidationSummary class="validation-summary" />
 
@@ -71,10 +71,13 @@
 
   private IReadOnlyList<UserSummary>? users;
   private List<string> errors = [];
-  private NewUserModel newUser = new();
+
+  [SupplyParameterFromForm]
+  private NewUserModel newUser { get; set; } = default!;
 
   protected override async Task OnInitializedAsync()
   {
+    newUser ??= new();
     users = await AdminUserService.GetUsersAsync(CancellationToken.None);
   }
 

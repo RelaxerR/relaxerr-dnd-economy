@@ -91,6 +91,26 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
 
 ## Известные проблемы / TODO
 
+- **Статичные SSR-формы теряли данные (исправлено 2026-08-09, два разных бага сразу)**:
+  1. На каждой странице `MainLayout` рендерит форму логаута без `@formname` — как только на той же
+     странице появлялась ещё одна форма без имени (`EditForm` без `FormName`), Blazor не мог понять,
+     какую форму отправили: `An exception ... does not specify which form is being submitted`.
+     Пофикшено — у формы логаута `@formname="logout"`, у всех `EditForm` на статичных SSR-страницах
+     свой `FormName` (`item-request`, `new-item`, `invite-user`, `new-city`, `new-session`).
+     `AdminEconomy` — единственная страница с двумя формами сразу, там имена обязаны различаться.
+  2. Отдельная, более коварная проблема: даже после того как форму стало можно отличить, значения
+     всё равно не долетали до модели — валидация ВСЕГДА требовала обязательные поля, даже если они
+     были заполнены. Причина: `newRequest`/`model`/`newCity`/`newSession`/`newUser` были обычными
+     `private`-полями, а не `[SupplyParameterFromForm]`-свойствами. Для статичного SSR (без circuit)
+     это единственный способ, которым POST-данные попадают обратно в модель компонента — обычное
+     поле с `@bind-Value` работает только при живой интерактивности (circuit), а не через
+     страница-туда-обратно постбэк. Паттерн подсмотрен в `Login.razor`/`ForceChangePassword.razor`
+     (единственных местах, где это было сделано правильно с самого начала): свойство
+     `[SupplyParameterFromForm] private T Model { get; set; } = default!;` + `Model ??= new();` в
+     `OnInitialized(Async)`. На странице с двумя формами (`AdminEconomy`) у атрибута нужен явный
+     `FormName`, совпадающий с `EditForm`'овским (`[SupplyParameterFromForm(FormName = "new-city")]`).
+     Страницы с `@rendermode InteractiveServer` (`AdminRequests`) этой проблеме не подвержены —
+     там `@bind-Value` работает напрямую через живой circuit, `SupplyParameterFromForm` не нужен.
 - **Ни одна страница не была интерактивной (исправлено 2026-08-09)** — `Program.cs` регистрировал
   `AddInteractiveServerRenderMode()`, но НИ ОДИН компонент фактически не объявлял
   `@rendermode InteractiveServer` (ни глобально на `<Routes>` в `App.razor`, ни на страницах) —

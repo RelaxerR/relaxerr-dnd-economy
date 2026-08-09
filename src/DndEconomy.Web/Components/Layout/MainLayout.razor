@@ -21,7 +21,7 @@
             <a href="/admin/requests">Админка</a>
           }
           <span class="app-header__user">@context.User.Identity?.Name</span>
-          <form action="Account/Logout" method="post">
+          <form action="Account/Logout" method="post" @formname="logout">
             <AntiforgeryToken />
             <input type="hidden" name="ReturnUrl" value="@currentUrl" />
             <button type="submit" class="app-header__logout">Выйти</button>
