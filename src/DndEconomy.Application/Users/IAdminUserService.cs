@@ -9,7 +9,18 @@ public interface IAdminUserService
 {
   Task<IReadOnlyList<UserSummary>> GetUsersAsync(CancellationToken cancellationToken);
 
-  /// <summary>Создаёт игрока с временным паролем (MustChangePassword=true). Возвращает ошибки Identity, если есть.</summary>
+  /// <summary>
+  /// Создаёт пользователя с временным паролем (MustChangePassword=true) и указанной ролью
+  /// (<see cref="DndEconomy.Domain.Constants.RoleNames"/>.Admin или .Player). Возвращает ошибки
+  /// Identity, если есть.
+  /// </summary>
   Task<IReadOnlyList<string>> InviteUserAsync(
-    Guid invitedByUserId, string email, string displayName, string temporaryPassword, CancellationToken cancellationToken);
+    Guid invitedByUserId, string email, string displayName, string temporaryPassword, string role, CancellationToken cancellationToken);
+
+  /// <summary>
+  /// Удаляет пользователя безвозвратно. Отклоняется (с сообщением об ошибке), если админ пытается
+  /// удалить сам себя или последнего оставшегося администратора — иначе можно случайно остаться
+  /// без доступа в админку.
+  /// </summary>
+  Task<IReadOnlyList<string>> DeleteUserAsync(Guid requestingAdminId, Guid userId, CancellationToken cancellationToken);
 }

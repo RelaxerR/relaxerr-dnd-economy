@@ -540,6 +540,23 @@ body {
   background: rgba(139, 94, 52, 0.06);
 }
 
+/* Строка пользователя в /admin/users — текст слева, кнопка удаления справа (см. AdminUsers.razor) */
+
+.admin-user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-user-row__delete {
+  flex: none;
+  background: rgba(255, 59, 48, 0.1);
+  color: #b3261e;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
 .admin-table--clickable tbody tr {
   cursor: pointer;
 }

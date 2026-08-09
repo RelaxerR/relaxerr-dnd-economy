@@ -1,12 +1,16 @@
 @page "/admin/users"
+@rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
 @using DndEconomy.Application.Users
 @using DndEconomy.Domain.Constants
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IAdminUserService AdminUserService
+@inject IJSRuntime JSRuntime
+@inject ToastService ToastService
 
 <PageTitle>Пользователи — админка Relaxerr</PageTitle>
+<ToastContainer />
 
 <h1>Пользователи</h1>
 <AdminNav />
@@ -32,11 +36,17 @@
     {
       @foreach (var user in users)
       {
-        <p class="catalog-meta">
-          <strong>@user.DisplayName</strong> (@user.Email) — @string.Join(", ", user.Roles)
-          @if (user.MustChangePassword)
+        <p class="catalog-meta admin-user-row">
+          <span>
+            <strong>@user.DisplayName</strong> (@user.Email) — @string.Join(", ", user.Roles)
+            @if (user.MustChangePassword)
+            {
+              <text> · ждёт смены временного пароля</text>
+            }
+          </span>
+          @if (user.Id != currentUserId)
           {
-            <text> · ждёт смены временного пароля</text>
+            <button class="btn admin-user-row__delete" @onclick="() => DeleteUserAsync(user)">Удалить</button>
           }
         </p>
       }
@@ -44,8 +54,8 @@
   </section>
 
   <section class="auth-card">
-    <h2>Пригласить игрока</h2>
-    <EditForm Model="newUser" OnValidSubmit="InviteAsync" FormName="invite-user">
+    <h2>Пригласить пользователя</h2>
+    <EditForm Model="newUser" OnValidSubmit="InviteAsync">
       <DataAnnotationsValidator />
       <ValidationSummary class="validation-summary" />
 
@@ -61,6 +71,13 @@
         <label for="TemporaryPassword">Временный пароль</label>
         <InputText @bind-Value="newUser.TemporaryPassword" id="TemporaryPassword" />
       </div>
+      <div class="form-field">
+        <label for="Role">Роль</label>
+        <InputSelect @bind-Value="newUser.Role" id="Role">
+          <option value="@RoleNames.Player">Игрок</option>
+          <option value="@RoleNames.Admin">Администратор</option>
+        </InputSelect>
+      </div>
 
       <button type="submit" class="btn btn--primary">Создать</button>
     </EditForm>
@@ -73,13 +90,18 @@
 
   private IReadOnlyList<UserSummary>? users;
   private List<string> errors = [];
-
-  [SupplyParameterFromForm]
-  private NewUserModel newUser { get; set; } = default!;
+  private Guid currentUserId;
+  private NewUserModel newUser = new();
 
   protected override async Task OnInitializedAsync()
   {
-    newUser ??= new();
+    if (AuthenticationStateTask is not null)
+    {
+      var authState = await AuthenticationStateTask;
+      var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+      Guid.TryParse(userIdString, out currentUserId);
+    }
+
     users = await AdminUserService.GetUsersAsync(CancellationToken.None);
   }
 
@@ -87,16 +109,8 @@
   {
     errors = [];
 
-    if (AuthenticationStateTask is null)
-      return;
-
-    var authState = await AuthenticationStateTask;
-    var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-    if (userIdString is null || !Guid.TryParse(userIdString, out var adminId))
-      return;
-
     var result = await AdminUserService.InviteUserAsync(
-      adminId, newUser.Email, newUser.DisplayName, newUser.TemporaryPassword, CancellationToken.None);
+      currentUserId, newUser.Email, newUser.DisplayName, newUser.TemporaryPassword, newUser.Role, CancellationToken.None);
 
     if (result.Count > 0)
     {
@@ -106,6 +120,25 @@
 
     newUser = new();
     users = await AdminUserService.GetUsersAsync(CancellationToken.None);
+    ToastService.ShowSuccess("Пользователь создан");
+  }
+
+  private async Task DeleteUserAsync(UserSummary user)
+  {
+    var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Удалить пользователя «{user.DisplayName}» ({user.Email}) безвозвратно?");
+    if (!confirmed)
+      return;
+
+    errors = [];
+    var result = await AdminUserService.DeleteUserAsync(currentUserId, user.Id, CancellationToken.None);
+    if (result.Count > 0)
+    {
+      errors = result.ToList();
+      return;
+    }
+
+    users = await AdminUserService.GetUsersAsync(CancellationToken.None);
+    ToastService.ShowSuccess("Пользователь удалён");
   }
 
   private sealed class NewUserModel
@@ -118,5 +151,7 @@
 
     [Required]
     public string TemporaryPassword { get; set; } = "";
+
+    public string Role { get; set; } = RoleNames.Player;
   }
 }

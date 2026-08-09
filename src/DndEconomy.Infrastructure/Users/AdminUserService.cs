@@ -50,8 +50,11 @@ public sealed class AdminUserService : IAdminUserService
 
   /// <inheritdoc />
   public async Task<IReadOnlyList<string>> InviteUserAsync(
-    Guid invitedByUserId, string email, string displayName, string temporaryPassword, CancellationToken cancellationToken)
+    Guid invitedByUserId, string email, string displayName, string temporaryPassword, string role, CancellationToken cancellationToken)
   {
+    if (role != RoleNames.Admin && role != RoleNames.Player)
+      return [$"Неизвестная роль «{role}»."];
+
     // UserName == Email — соглашение проекта, см. CLAUDE.md (PasswordSignInAsync ищет по UserName).
     var user = new ApplicationUser
     {
@@ -67,7 +70,28 @@ public sealed class AdminUserService : IAdminUserService
     if (!createResult.Succeeded)
       return createResult.Errors.Select(e => e.Description).ToList();
 
-    await _userManager.AddToRoleAsync(user, RoleNames.Player);
+    await _userManager.AddToRoleAsync(user, role);
     return [];
+  }
+
+  /// <inheritdoc />
+  public async Task<IReadOnlyList<string>> DeleteUserAsync(Guid requestingAdminId, Guid userId, CancellationToken cancellationToken)
+  {
+    if (requestingAdminId == userId)
+      return ["Нельзя удалить самого себя."];
+
+    var user = await _userManager.FindByIdAsync(userId.ToString());
+    if (user is null)
+      return [];
+
+    if (await _userManager.IsInRoleAsync(user, RoleNames.Admin))
+    {
+      var admins = await _userManager.GetUsersInRoleAsync(RoleNames.Admin);
+      if (admins.Count <= 1)
+        return ["Нельзя удалить последнего администратора."];
+    }
+
+    var deleteResult = await _userManager.DeleteAsync(user);
+    return deleteResult.Succeeded ? [] : deleteResult.Errors.Select(e => e.Description).ToList();
   }
 }
