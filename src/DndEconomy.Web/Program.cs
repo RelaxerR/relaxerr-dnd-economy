@@ -38,9 +38,14 @@ builder.Services.AddControllers();
 
 // Foundry VTT (relaxerr-dnd.ru) — отдельный сайт от relaxerr-dnd-economy.ru (хоть и на одном
 // сервере), макросы делают кросс-сайтовые fetch с credentials к /api/*. AllowCredentials требует
-// явного списка origin — AllowAnyOrigin с ним несовместим (спека CORS).
+// явного списка origin — AllowAnyOrigin с ним несовместим (спека CORS). Второй origin —
+// http://77.110.104.211:30000 — прямой адрес по IP:порту в обход nginx/домена: часть игроков
+// заходит в Foundry так же часто, как и по домену, оба варианта нужны одновременно. Он httр
+// (не https) — cookie авторизации сайта всё равно долетит обратно (Secure относится к
+// защищённости запроса К сайту экономики, а не к схеме страницы-источника), но сам этот origin
+// по определению не шифрован — трафик до Foundry по IP отдельная история, вне контроля этого приложения.
 builder.Services.AddCors(options => options.AddPolicy(CorsPolicyNames.FoundryVtt, policy => policy
-  .WithOrigins("https://relaxerr-dnd.ru")
+  .WithOrigins("https://relaxerr-dnd.ru", "http://77.110.104.211:30000")
   .AllowAnyHeader()
   .WithMethods("GET", "POST")
   .AllowCredentials()));
