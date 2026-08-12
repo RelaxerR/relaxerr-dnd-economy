@@ -1,9 +1,11 @@
 @page "/catalog"
 @rendermode InteractiveServer
+@using System.Text.Json
 @using DndEconomy.Application.Catalog
 @using DndEconomy.Application.Pricing
 @inject ICatalogQueryService CatalogQueryService
 @inject ICatalogReadStore CatalogReadStore
+@inject IJSRuntime JSRuntime
 @implements IDisposable
 
 <PageTitle>Каталог — Relaxerr</PageTitle>
@@ -68,9 +70,12 @@ else
   <div class="catalog-grid">
     @foreach (var item in catalogPage.Items)
     {
+      var style = CatalogTypeStyleProvider.Resolve(item.Type);
       <a class="catalog-card" href="@($"catalog/{item.ItemId}")">
-        <span class="catalog-card__name">@item.NameRu</span>
-        <span class="catalog-card__meta">@item.Category · @item.Type / @item.Subtype</span>
+        <span class="catalog-card__name">
+          <span class="catalog-card__icon" aria-hidden="true">@style.Emoji</span>@item.NameRu
+        </span>
+        <span class="catalog-card__meta" style="color:@style.ColorHex">@item.Category · @item.Type / @item.Subtype</span>
 
         @if (item.IsPlayerSuggested)
         {
@@ -82,8 +87,8 @@ else
         }
 
         <span class="catalog-card__prices">
-          <span>Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
-          <span>Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
+          <span class="catalog-card__price catalog-card__price--buy">Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
+          <span class="catalog-card__price catalog-card__price--sell">Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
         </span>
       </a>
     }
@@ -100,6 +105,10 @@ else
   private const int PageSize = 24;
   private const int SearchDebounceMilliseconds = 300;
 
+  // Ключ localStorage браузера — фильтры сохраняются на клиенте, не в БД (они личные для
+  // устройства/браузера игрока, а не для аккаунта).
+  private const string FiltersStorageKey = "dndeconomy.catalog.filters";
+
   private CatalogPage? catalogPage;
   private IReadOnlyList<string> categories = [];
   private IReadOnlyList<string> types = [];
@@ -115,12 +124,64 @@ else
 
   private CancellationTokenSource? searchDebounceCts;
 
+  // JS interop недоступен во время статичного prerender'а (до подключения circuit'а) — этим
+  // флагом откладываем чтение/запись localStorage до OnAfterRenderAsync(firstRender: true).
+  private bool jsReady;
+
   protected override async Task OnInitializedAsync()
   {
     categories = await CatalogReadStore.GetDistinctCategoriesAsync(CancellationToken.None);
     types = await CatalogReadStore.GetDistinctTypesAsync(null, CancellationToken.None);
     subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
     await LoadPageAsync();
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!firstRender)
+      return;
+
+    jsReady = true;
+    await RestoreFiltersFromLocalStorageAsync();
+  }
+
+  private async Task RestoreFiltersFromLocalStorageAsync()
+  {
+    var json = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", FiltersStorageKey);
+    if (string.IsNullOrWhiteSpace(json))
+      return;
+
+    CatalogFiltersState? saved;
+    try
+    {
+      saved = JsonSerializer.Deserialize<CatalogFiltersState>(json);
+    }
+    catch (JsonException)
+    {
+      return;
+    }
+
+    if (saved is null)
+      return;
+
+    searchTerm = saved.SearchTerm;
+    selectedCategory = saved.Category;
+    selectedType = saved.Type;
+    selectedSubtype = saved.Subtype;
+    onlyAvailable = saved.OnlyAvailable;
+    sortOrder = saved.SortOrder;
+
+    types = await CatalogReadStore.GetDistinctTypesAsync(NullIfEmpty(selectedCategory), CancellationToken.None);
+    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(NullIfEmpty(selectedType), CancellationToken.None);
+
+    await LoadPageAsync();
+    StateHasChanged();
+  }
+
+  private async Task SaveFiltersToLocalStorageAsync()
+  {
+    var state = new CatalogFiltersState(searchTerm, selectedCategory, selectedType, selectedSubtype, onlyAvailable, sortOrder);
+    await JSRuntime.InvokeVoidAsync("localStorage.setItem", FiltersStorageKey, JsonSerializer.Serialize(state));
   }
 
   private void OnSearchInput(ChangeEventArgs e)
@@ -196,9 +257,20 @@ else
     };
 
     catalogPage = await CatalogQueryService.GetPageAsync(query, CancellationToken.None);
+
+    if (jsReady)
+      await SaveFiltersToLocalStorageAsync();
   }
 
   private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+  private sealed record CatalogFiltersState(
+    string SearchTerm,
+    string Category,
+    string Type,
+    string Subtype,
+    bool OnlyAvailable,
+    CatalogSortOrder SortOrder);
 
   public void Dispose() => searchDebounceCts?.Cancel();
 }

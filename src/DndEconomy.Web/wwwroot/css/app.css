@@ -279,15 +279,31 @@ body {
   font-weight: 600;
 }
 
+.catalog-card__icon {
+  margin-right: 6px;
+}
+
 .catalog-card__meta {
-  color: rgba(29, 29, 31, 0.6);
   font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .catalog-card__prices {
   display: flex;
   justify-content: space-between;
   font-size: 0.95rem;
+}
+
+.catalog-card__price {
+  font-weight: 600;
+}
+
+.catalog-card__price--buy {
+  color: var(--color-accent);
+}
+
+.catalog-card__price--sell {
+  color: #1e7c34;
 }
 
 .badge {
