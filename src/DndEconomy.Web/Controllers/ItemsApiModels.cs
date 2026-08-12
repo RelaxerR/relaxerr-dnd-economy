@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DndEconomy.Web.Controllers;
 
-/// <summary>Результат поиска предмета по названию — точное имя лучшего совпадения и его цена.</summary>
+/// <summary>Одно из совпадений в результатах поиска предмета по названию — точное имя и цена.</summary>
 public sealed class ItemSearchResponse
 {
   public required Guid ItemId { get; init; }
