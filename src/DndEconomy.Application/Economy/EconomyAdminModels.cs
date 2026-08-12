@@ -21,6 +21,7 @@ public sealed record EconomySessionSummary
   public required Season Season { get; init; }
   public required decimal BaseCoefficient { get; init; }
   public required decimal SellCoefficient { get; init; }
+  public required bool IsPinnedForDisplay { get; init; }
 }
 
 public sealed record NewEconomySessionInput

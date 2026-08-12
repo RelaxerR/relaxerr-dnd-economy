@@ -51,11 +51,23 @@ public sealed class EconomyPricingReadStore : IEconomyPricingReadStore
   public async Task<ActiveSessionContext?> GetActiveSessionContextAsync(DateOnly asOfDate, CancellationToken cancellationToken)
   {
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-    var session = await dbContext.EconomySessions
+
+    var naturalSession = await dbContext.EconomySessions
       .Include(x => x.City)
       .Where(x => x.RealDate <= asOfDate)
       .OrderByDescending(x => x.RealDate)
       .FirstOrDefaultAsync(cancellationToken);
+
+    var pinnedSession = await dbContext.EconomySessions
+      .Include(x => x.City)
+      .SingleOrDefaultAsync(x => x.IsPinnedForDisplay, cancellationToken);
+
+    // Закреплённая администратором сессия побеждает, пока не наступит дата более новой
+    // сессии — тогда автоматический выбор по дате снова берёт верх (см. комментарий на
+    // EconomySession.IsPinnedForDisplay).
+    var session = pinnedSession is not null && (naturalSession is null || pinnedSession.RealDate >= naturalSession.RealDate)
+      ? pinnedSession
+      : naturalSession;
 
     if (session is null || session.City is null)
     {
@@ -66,6 +78,7 @@ public sealed class EconomyPricingReadStore : IEconomyPricingReadStore
     return new ActiveSessionContext
     {
       SessionName = session.Name,
+      GameDateLabel = session.GameDateLabel,
       CityId = session.City.Id,
       CityName = session.City.Name,
       Season = session.Season,

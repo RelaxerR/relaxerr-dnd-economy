@@ -55,7 +55,8 @@ public sealed class EconomyAdminService : IEconomyAdminService
         CityName = x.City != null ? x.City.Name : null,
         Season = x.Season,
         BaseCoefficient = x.BaseCoefficient,
-        SellCoefficient = x.SellCoefficient
+        SellCoefficient = x.SellCoefficient,
+        IsPinnedForDisplay = x.IsPinnedForDisplay
       })
       .ToListAsync(cancellationToken);
   }
@@ -112,5 +113,24 @@ public sealed class EconomyAdminService : IEconomyAdminService
 
     dbContext.EconomySessions.Remove(session);
     await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task SetDisplaySessionOverrideAsync(Guid? sessionId, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    // Снимаем закрепление со всех сессий разом (частичный уникальный индекс допускает
+    // только одну закреплённую запись), затем закрепляем выбранную, если она указана.
+    await dbContext.EconomySessions
+      .Where(x => x.IsPinnedForDisplay)
+      .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsPinnedForDisplay, false), cancellationToken);
+
+    if (sessionId is null)
+      return;
+
+    await dbContext.EconomySessions
+      .Where(x => x.Id == sessionId.Value)
+      .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsPinnedForDisplay, true), cancellationToken);
   }
 }

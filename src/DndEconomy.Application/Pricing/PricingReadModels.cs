@@ -21,6 +21,7 @@ public sealed class ItemPricingSource
 public sealed class ActiveSessionContext
 {
   public required string SessionName { get; init; }
+  public required string GameDateLabel { get; init; }
   public required Guid CityId { get; init; }
   public required string CityName { get; init; }
   public required Season Season { get; init; }

@@ -23,4 +23,13 @@ public interface IEconomyAdminService
 
   /// <summary>Удаляет сессию безвозвратно.</summary>
   Task DeleteSessionAsync(Guid sessionId, CancellationToken cancellationToken);
+
+  /// <summary>
+  /// Закрепляет сессию как принудительно показываемую игрокам (в обход обычного выбора
+  /// "последняя сессия с RealDate не позже сегодня"), либо снимает закрепление, если
+  /// <paramref name="sessionId"/> равен null — тогда снова используется выбор по дате.
+  /// Закрепление автоматически перестаёт действовать, как только у другой сессии наступает
+  /// более поздняя RealDate (см. EconomyPricingReadStore.GetActiveSessionContextAsync).
+  /// </summary>
+  Task SetDisplaySessionOverrideAsync(Guid? sessionId, CancellationToken cancellationToken);
 }

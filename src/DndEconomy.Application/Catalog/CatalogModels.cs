@@ -68,6 +68,7 @@ public sealed class CatalogPage
   public required int PageSize { get; init; }
   public required string ActiveSessionName { get; init; }
   public required string CityName { get; init; }
+  public required string GameDateLabel { get; init; }
 
   public static CatalogPage Empty(int pageNumber, int pageSize) => new()
   {
@@ -76,6 +77,7 @@ public sealed class CatalogPage
     PageNumber = pageNumber,
     PageSize = pageSize,
     ActiveSessionName = string.Empty,
-    CityName = string.Empty
+    CityName = string.Empty,
+    GameDateLabel = string.Empty
   };
 }

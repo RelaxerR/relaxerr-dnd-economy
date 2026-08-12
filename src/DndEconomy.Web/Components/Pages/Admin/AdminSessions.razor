@@ -23,8 +23,11 @@
   <section class="auth-card admin-two-col__wide">
     <h2>Сессии</h2>
     <p class="catalog-meta">
-      Текущая сессия — с наибольшей реальной датой не позже сегодня, выделена ниже.
-      Кликните по строке, чтобы отредактировать или удалить сессию.
+      Игрокам показывается сессия с наибольшей реальной датой не позже сегодня — она выделена
+      ниже бейджем «Показывается игрокам». Кнопкой «Показывать эту» можно принудительно закрепить
+      другую сессию (например, подготовленную заранее на следующую встречу) — закрепление
+      действует, пока не наступит дата более новой сессии, тогда сайт автоматически вернётся
+      к обычному выбору по дате. Кликните по строке, чтобы отредактировать или удалить сессию.
     </p>
     @if (sessions is null)
     {
@@ -47,18 +50,23 @@
               <th>Сезон</th>
               <th>×База</th>
               <th>×Продажа</th>
+              <th>Показ игрокам</th>
             </tr>
           </thead>
           <tbody>
             @foreach (var session in sessions)
             {
-              <tr class="@(session.Id == currentSessionId ? "admin-table__row--current" : "")"
+              <tr class="@(session.Id == effectiveSessionId ? "admin-table__row--current" : "")"
                 @onclick="() => OpenEditModal(session)">
                 <td>
                   @session.Name
-                  @if (session.Id == currentSessionId)
+                  @if (session.Id == effectiveSessionId)
                   {
-                    <span class="badge badge--player-suggested">Текущая</span>
+                    <span class="badge badge--player-suggested">Показывается игрокам</span>
+                  }
+                  else if (session.IsPinnedForDisplay)
+                  {
+                    <span class="badge badge--unavailable">Закреплена, но неактуальна</span>
                   }
                 </td>
                 <td>@session.RealDate</td>
@@ -67,6 +75,16 @@
                 <td>@SeasonLabel(session.Season)</td>
                 <td>×@session.BaseCoefficient</td>
                 <td>×@session.SellCoefficient</td>
+                <td>
+                  @if (session.IsPinnedForDisplay)
+                  {
+                    <button type="button" class="btn" @onclick="() => TogglePinAsync(null)" @onclick:stopPropagation="true">Открепить</button>
+                  }
+                  else
+                  {
+                    <button type="button" class="btn" @onclick="() => TogglePinAsync(session.Id)" @onclick:stopPropagation="true">Показывать эту</button>
+                  }
+                </td>
               </tr>
             }
           </tbody>
@@ -164,7 +182,7 @@
 @code {
   private IReadOnlyList<CitySummary>? cities;
   private IReadOnlyList<EconomySessionSummary>? sessions;
-  private Guid? currentSessionId;
+  private Guid? effectiveSessionId;
   private NewSessionModel newSession = new() { RealDate = DateTime.Today };
 
   private Guid? editingSessionId;
@@ -181,10 +199,24 @@
     sessions = await EconomyAdminService.GetSessionsAsync(CancellationToken.None);
 
     var today = DateOnly.FromDateTime(DateTime.Today);
-    currentSessionId = sessions
+    var naturalSession = sessions
       .Where(s => s.RealDate <= today)
       .OrderByDescending(s => s.RealDate)
-      .FirstOrDefault()?.Id;
+      .FirstOrDefault();
+    var pinnedSession = sessions.FirstOrDefault(s => s.IsPinnedForDisplay);
+
+    // Та же логика, что и в EconomyPricingReadStore.GetActiveSessionContextAsync: закреплённая
+    // сессия побеждает, пока не наступит дата более новой.
+    effectiveSessionId = pinnedSession is not null && (naturalSession is null || pinnedSession.RealDate >= naturalSession.RealDate)
+      ? pinnedSession.Id
+      : naturalSession?.Id;
+  }
+
+  private async Task TogglePinAsync(Guid? sessionId)
+  {
+    await EconomyAdminService.SetDisplaySessionOverrideAsync(sessionId, CancellationToken.None);
+    await ReloadAsync();
+    ToastService.ShowSuccess(sessionId is null ? "Закрепление снято — показ снова по дате" : "Сессия закреплена для показа игрокам");
   }
 
   private async Task CreateSessionAsync()

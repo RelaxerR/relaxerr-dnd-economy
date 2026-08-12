@@ -48,6 +48,15 @@ public class EconomySession : AuditableEntity
   /// <summary>Текущий игровой сезон — определяет применяемые SeasonModifier.</summary>
   public Season Season { get; set; }
 
+  /// <summary>
+  /// Ручное закрепление: администратор форсирует показ цен именно этой сессии игрокам,
+  /// в обход обычного выбора "последняя сессия с RealDate не позже сегодня". Как только
+  /// у другой сессии наступает RealDate позже, чем у закреплённой, автоматический выбор
+  /// снова берёт верх — см. EconomyPricingReadStore.GetActiveSessionContextAsync. Не более
+  /// одной сессии одновременно (обеспечивается частичным уникальным индексом в конфигурации).
+  /// </summary>
+  public bool IsPinnedForDisplay { get; set; }
+
   #endregion
 
   #region Глобальные коэффициенты

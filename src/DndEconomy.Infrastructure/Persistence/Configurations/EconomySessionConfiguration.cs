@@ -21,5 +21,11 @@ public class EconomySessionConfiguration : IEntityTypeConfiguration<EconomySessi
 
     // Расчёт цены ищет ближайшую по дате сессию — индекс критичен для производительности запроса.
     builder.HasIndex(x => x.RealDate);
+
+    // Гарантирует на уровне БД, что закреплённой для показа может быть только одна сессия
+    // одновременно, даже если сервис когда-нибудь начнёт обновлять записи не в одной транзакции.
+    builder.HasIndex(x => x.IsPinnedForDisplay)
+      .IsUnique()
+      .HasFilter("\"IsPinnedForDisplay\" = true");
   }
 }

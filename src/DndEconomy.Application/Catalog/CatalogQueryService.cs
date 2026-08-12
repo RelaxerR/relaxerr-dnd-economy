@@ -55,7 +55,8 @@ public sealed class CatalogQueryService : ICatalogQueryService
       PageNumber = normalizedQuery.PageNumber,
       PageSize = normalizedQuery.PageSize,
       ActiveSessionName = session.SessionName,
-      CityName = session.CityName
+      CityName = session.CityName,
+      GameDateLabel = session.GameDateLabel
     };
   }
 

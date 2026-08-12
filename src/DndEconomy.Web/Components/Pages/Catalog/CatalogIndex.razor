@@ -61,7 +61,8 @@ else if (catalogPage.TotalCount == 0 && string.IsNullOrEmpty(catalogPage.ActiveS
 else
 {
   <p class="catalog-meta">
-    Сессия «@catalogPage.ActiveSessionName», город @catalogPage.CityName · найдено предметов: @catalogPage.TotalCount
+    Цены актуальны для города @catalogPage.CityName на игровую дату @catalogPage.GameDateLabel
+    (сессия «@catalogPage.ActiveSessionName») · найдено предметов: @catalogPage.TotalCount
   </p>
 
   <div class="catalog-grid">
