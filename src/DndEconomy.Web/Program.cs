@@ -30,6 +30,10 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRazorComponents()
   .AddInteractiveServerComponents();
 
+// API-контроллеры (DndEconomy.Web/Controllers) — поиск предмета и создание предмета админом,
+// используют ту же cookie-авторизацию Identity, что и Blazor-страницы.
+builder.Services.AddControllers();
+
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
@@ -86,6 +90,7 @@ app.MapStaticAssets().AllowAnonymous();
 app.MapRazorComponents<DndEconomy.Web.Components.App>()
   .AddInteractiveServerRenderMode();
 app.MapAccountEndpoints();
+app.MapControllers();
 
 #endregion
 
