@@ -2,6 +2,7 @@ using DndEconomy.Application.Catalog;
 using DndEconomy.Application.Items;
 using DndEconomy.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DndEconomy.Web.Controllers;
@@ -10,10 +11,12 @@ namespace DndEconomy.Web.Controllers;
 /// API для поиска предметов каталога и создания новых предметов админом. Авторизация — те же
 /// cookie Identity, что и у всего сайта: поиск не размечен [Authorize], поэтому подпадает под
 /// общий FallbackPolicy (нужен только логин, как на любой странице каталога), создание —
-/// отдельная политика с ролью Admin, как на странице AdminItemNew.
+/// отдельная политика с ролью Admin, как на странице AdminItemNew. [EnableCors] — доступ с
+/// домена Foundry VTT (см. CorsPolicyNames.FoundryVtt) для макросов.
 /// </summary>
 [ApiController]
 [Route("api/items")]
+[EnableCors(CorsPolicyNames.FoundryVtt)]
 public sealed class ItemsController : ControllerBase
 {
   #region Поля и конструктор

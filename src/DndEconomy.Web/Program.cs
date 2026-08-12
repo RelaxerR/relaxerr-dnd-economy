@@ -3,9 +3,11 @@ using System.Threading.RateLimiting;
 using DndEconomy.Infrastructure;
 using DndEconomy.Infrastructure.Identity;
 using DndEconomy.Infrastructure.Persistence;
+using DndEconomy.Web;
 using DndEconomy.Web.Components.Account;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 
@@ -34,12 +36,34 @@ builder.Services.AddRazorComponents()
 // используют ту же cookie-авторизацию Identity, что и Blazor-страницы.
 builder.Services.AddControllers();
 
+// Foundry VTT (relaxerr-dnd.ru) — отдельный сайт от relaxerr-dnd-economy.ru (хоть и на одном
+// сервере), макросы делают кросс-сайтовые fetch с credentials к /api/*. AllowCredentials требует
+// явного списка origin — AllowAnyOrigin с ним несовместим (спека CORS).
+builder.Services.AddCors(options => options.AddPolicy(CorsPolicyNames.FoundryVtt, policy => policy
+  .WithOrigins("https://relaxerr-dnd.ru")
+  .AllowAnyHeader()
+  .WithMethods("GET", "POST")
+  .AllowCredentials()));
+
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 builder.Services.AddScoped<DndEconomy.Web.Services.ToastService>();
 
 builder.Services.AddRateLimiter(ConfigureRateLimiting);
+
+// Кросс-сайтовый fetch(credentials:'include') с relaxerr-dnd.ru отправит auth-cookie только если
+// она SameSite=None (обязательно вместе с Secure — таково требование браузеров). В Development
+// оставляем стандартный Lax, иначе локальный вход по обычному HTTP (без TLS) сломается: браузер
+// отбрасывает SameSite=None-cookie без Secure, а Secure-cookie не запишется поверх HTTP.
+builder.Services.ConfigureApplicationCookie(options =>
+{
+  if (!builder.Environment.IsDevelopment())
+  {
+    options.Cookie.SameSite = SameSiteMode.None;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+  }
+});
 
 #endregion
 
@@ -80,6 +104,9 @@ app.UseHttpsRedirection();
 app.UseSerilogRequestLogging();
 app.UseRateLimiter();
 app.UseAuthentication();
+// Только endpoint'ы с [EnableCors(CorsPolicyNames.FoundryVtt)] (ItemsController, AuthController)
+// получают CORS-заголовки — остальной сайт (Blazor, Account/*) в кросс-сайтовом доступе не нуждается.
+app.UseCors();
 app.UseAuthorization();
 app.UseAntiforgery();
 
