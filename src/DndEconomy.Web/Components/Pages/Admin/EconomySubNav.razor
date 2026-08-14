@@ -1,0 +1,13 @@
+@inject NavigationManager NavigationManager
+
+<nav class="admin-subnav">
+  <a class="admin-subnav__link @(IsActive("/admin/economy/cities") ? "admin-subnav__link--active" : "")" href="/admin/economy/cities">Города</a>
+  <a class="admin-subnav__link @(IsActive("/admin/economy/city-modifiers") ? "admin-subnav__link--active" : "")" href="/admin/economy/city-modifiers">Коэф. города</a>
+  <a class="admin-subnav__link @(IsActive("/admin/economy/season-modifiers") ? "admin-subnav__link--active" : "")" href="/admin/economy/season-modifiers">Коэф. сезона</a>
+  <a class="admin-subnav__link @(IsActive("/admin/economy/sessions") ? "admin-subnav__link--active" : "")" href="/admin/economy/sessions">Сессии</a>
+</nav>
+
+@code {
+  private bool IsActive(string path)
+    => NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Equals(path.TrimStart('/'), StringComparison.OrdinalIgnoreCase);
+}

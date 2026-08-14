@@ -3,10 +3,10 @@ using DndEconomy.Domain.Enums;
 namespace DndEconomy.Application.Economy;
 
 /// <summary>
-/// Управление городами и экономическими сессиями из админ-панели. Коэффициенты по
-/// (Тип, Подтип) — CityModifier/SeasonModifier — заводятся через импорт Excel
-/// (см. страницу /admin/import), отдельный UI-редактор матрицы коэффициентов не сделан
-/// (не нужен при малом числе городов/сезонов — правки проще внести в исходную таблицу).
+/// Управление городами, экономическими сессиями и коэффициентами (Тип+Подтип × Город/Сезон)
+/// из админ-панели. Коэффициенты по-прежнему можно завести и через импорт Excel
+/// (см. страницу /admin/import) — оба пути пишут в одни и те же таблицы CityModifier/
+/// SeasonModifier, поэтому взаимозаменяемы и не конфликтуют.
 /// </summary>
 public interface IEconomyAdminService
 {
@@ -32,4 +32,29 @@ public interface IEconomyAdminService
   /// более поздняя RealDate (см. EconomyPricingReadStore.GetActiveSessionContextAsync).
   /// </summary>
   Task SetDisplaySessionOverrideAsync(Guid? sessionId, CancellationToken cancellationToken);
+
+  #region Коэффициенты города/сезона
+
+  /// <summary>Различные пары Тип+Подтип, встречающиеся у предметов каталога — подсказки для формы добавления строки.</summary>
+  Task<IReadOnlyList<TypeSubtype>> GetItemTypeSubtypesAsync(CancellationToken cancellationToken);
+
+  /// <summary>Полная матрица коэффициентов "Тип+Подтип × Город" для редактора в админке.</summary>
+  Task<CityModifierMatrix> GetCityModifierMatrixAsync(CancellationToken cancellationToken);
+
+  /// <summary>Создаёт или обновляет коэффициент для одной ячейки матрицы (Тип+Подтип, город).</summary>
+  Task SetCityModifierAsync(string type, string subtype, Guid cityId, decimal coefficient, CancellationToken cancellationToken);
+
+  /// <summary>Удаляет всю строку матрицы (коэффициенты этого Типа+Подтипа для всех городов сразу).</summary>
+  Task DeleteCityModifierRowAsync(string type, string subtype, CancellationToken cancellationToken);
+
+  /// <summary>Полная матрица коэффициентов "Тип+Подтип × Сезон" для редактора в админке.</summary>
+  Task<IReadOnlyList<SeasonModifierMatrixRow>> GetSeasonModifierMatrixAsync(CancellationToken cancellationToken);
+
+  /// <summary>Создаёт или обновляет коэффициент для одной ячейки матрицы (Тип+Подтип, сезон).</summary>
+  Task SetSeasonModifierAsync(string type, string subtype, Season season, decimal coefficient, CancellationToken cancellationToken);
+
+  /// <summary>Удаляет всю строку матрицы (коэффициенты этого Типа+Подтипа для всех сезонов сразу).</summary>
+  Task DeleteSeasonModifierRowAsync(string type, string subtype, CancellationToken cancellationToken);
+
+  #endregion
 }

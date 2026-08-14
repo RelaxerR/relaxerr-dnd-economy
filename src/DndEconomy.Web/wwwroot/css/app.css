@@ -618,3 +618,27 @@ body {
   color: #b3261e;
   margin-left: auto;
 }
+
+/* Матрица коэффициентов "Тип+Подтип × Город/Сезон" (см. AdminCityModifiers.razor,
+   AdminSeasonModifiers.razor) — тот же .admin-table, но с плотными числовыми полями вместо
+   текста в ячейках и кнопкой удаления строки последней колонкой. */
+
+.admin-matrix-table td {
+  white-space: normal;
+}
+
+.admin-matrix-table__input {
+  width: 64px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.admin-matrix-table__delete {
+  background: rgba(255, 59, 48, 0.1);
+  color: #b3261e;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}

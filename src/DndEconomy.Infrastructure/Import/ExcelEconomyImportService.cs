@@ -10,13 +10,21 @@ using Microsoft.Extensions.Logging;
 namespace DndEconomy.Infrastructure.Import;
 
 /// <summary>
-/// Разбирает исходную таблицу экономики (листы "Исходник ДнД", "Города", "Сезонность",
-/// "Настройки") и наполняет БД. Повторную загрузку того же файла делает безопасной —
-/// существующие записи обновляются по ключу, а не дублируются.
+/// Разбирает таблицу экономики (листы "Предметы", "Города", "Сезонность", "Настройки") и
+/// наполняет БД. Повторную загрузку того же файла делает безопасной — существующие записи
+/// обновляются по ключу, а не дублируются. Все четыре листа не обязаны быть в одном файле —
+/// каждый лист импортируется независимо, если он присутствует в загруженной книге, поэтому
+/// админ может грузить как один общий файл, так и четыре отдельных (по одному листу в каждом),
+/// см. шаблоны в /templates.
 /// </summary>
 public sealed partial class ExcelEconomyImportService : IExcelEconomyImportService
 {
   #region Поля, конструктор, регулярное выражение для разбора названий
+
+  private const string ItemsSheetName = "Предметы";
+  private const string CitiesSheetName = "Города";
+  private const string SeasonsSheetName = "Сезонность";
+  private const string SettingsSheetName = "Настройки";
 
   // Формат названия в исходнике: "Русское название [English Name]" — English опционален.
   [GeneratedRegex(@"^(?<ru>.+?)\s*(\[(?<en>.+)\])?$")]
@@ -53,19 +61,51 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   /// <inheritdoc />
   public async Task<EconomyImportSummary> ImportAsync(Stream fileStream, CancellationToken cancellationToken)
   {
-    _logger.LogInformation("Начат импорт исходной таблицы экономики");
+    _logger.LogInformation("Начат импорт таблицы экономики");
 
     using var workbook = new XLWorkbook(fileStream);
     var summary = new EconomyImportSummary();
+    var recognizedAnySheet = false;
 
     // Один DbContext на весь импорт — шаги последовательны (без параллельных await'ов на разных
     // сущностях), и городам/сессиям из поздних листов нужны Id городов/сессий, созданных на ранних.
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-    await ImportItemsAsync(dbContext, workbook, summary, cancellationToken);
-    var citiesByName = await ImportCitiesAndModifiersAsync(dbContext, workbook, summary, cancellationToken);
-    await ImportSeasonModifiersAsync(dbContext, workbook, summary, cancellationToken);
-    await ImportSessionsAsync(dbContext, workbook, citiesByName, summary, cancellationToken);
+    if (workbook.Worksheets.TryGetWorksheet(ItemsSheetName, out var itemsSheet))
+    {
+      recognizedAnySheet = true;
+      await ImportItemsAsync(dbContext, itemsSheet, summary, cancellationToken);
+    }
+
+    // Города грузим из БД независимо от того, есть ли лист "Города" в ЭТОМ файле — они нужны
+    // листу "Настройки" (сессия ссылается на город по имени), а листы могут приходить разными
+    // файлами по отдельности (см. шаблоны в /templates).
+    var citiesByName = await dbContext.Cities.ToDictionaryAsync(x => x.Name, cancellationToken);
+
+    if (workbook.Worksheets.TryGetWorksheet(CitiesSheetName, out var citiesSheet))
+    {
+      recognizedAnySheet = true;
+      await ImportCitiesAndModifiersAsync(dbContext, citiesSheet, citiesByName, summary, cancellationToken);
+    }
+
+    if (workbook.Worksheets.TryGetWorksheet(SeasonsSheetName, out var seasonsSheet))
+    {
+      recognizedAnySheet = true;
+      await ImportSeasonModifiersAsync(dbContext, seasonsSheet, summary, cancellationToken);
+    }
+
+    if (workbook.Worksheets.TryGetWorksheet(SettingsSheetName, out var settingsSheet))
+    {
+      recognizedAnySheet = true;
+      await ImportSessionsAsync(dbContext, settingsSheet, citiesByName, summary, cancellationToken);
+    }
+
+    if (!recognizedAnySheet)
+    {
+      summary.Warnings.Add(
+        $"В файле не найдено ни одного из ожидаемых листов ({ItemsSheetName} / {CitiesSheetName} / " +
+        $"{SeasonsSheetName} / {SettingsSheetName}) — ничего не импортировано.");
+    }
 
     _logger.LogInformation(
       "Импорт завершён: предметов {Items}, городов {Cities}, модификаторов города {CityMods}, модификаторов сезона {SeasonMods}, сессий {Sessions}",
@@ -76,12 +116,11 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
   #endregion
 
-  #region Импорт листа "Исходник ДнД"
+  #region Импорт листа "Предметы"
 
-  /// <summary>Импортирует справочник предметов из листа "Исходник ДнД".</summary>
-  private static async Task ImportItemsAsync(ApplicationDbContext dbContext, XLWorkbook workbook, EconomyImportSummary summary, CancellationToken cancellationToken)
+  /// <summary>Импортирует справочник предметов из листа "Предметы".</summary>
+  private static async Task ImportItemsAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
-    var sheet = workbook.Worksheet("Исходник ДнД");
     var existingByUuid = await dbContext.Items
       .Where(x => x.ExternalUuid != null)
       .ToDictionaryAsync(x => x.ExternalUuid!, cancellationToken);
@@ -138,22 +177,21 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
   /// <summary>
   /// Импортирует города (шапка листа) и матрицу коэффициентов "Тип+Подтип × Город".
-  /// Возвращает словарь Имя города → сущность, используемый затем при импорте сессий.
+  /// Новые/существующие города добавляются в переданный словарь Имя города → сущность —
+  /// тот же словарь затем используется при импорте листа "Настройки" (в этом же файле или
+  /// в отдельном, загруженном следующим).
   /// </summary>
-  private static async Task<Dictionary<string, City>> ImportCitiesAndModifiersAsync(
-    ApplicationDbContext dbContext, XLWorkbook workbook, EconomyImportSummary summary, CancellationToken cancellationToken)
+  private static async Task ImportCitiesAndModifiersAsync(
+    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
-    var sheet = workbook.Worksheet("Города");
-    var citiesByName = await ResolveOrCreateCitiesAsync(dbContext, sheet, summary, cancellationToken);
+    await ResolveOrCreateCitiesAsync(dbContext, sheet, citiesByName, summary, cancellationToken);
     await ImportCityModifierRowsAsync(dbContext, sheet, citiesByName, summary, cancellationToken);
-    return citiesByName;
   }
 
   /// <summary>Читает названия городов из строки 1 и их размер из строки 2, создаёт недостающие City.</summary>
-  private static async Task<Dictionary<string, City>> ResolveOrCreateCitiesAsync(
-    ApplicationDbContext dbContext, IXLWorksheet sheet, EconomyImportSummary summary, CancellationToken cancellationToken)
+  private static async Task ResolveOrCreateCitiesAsync(
+    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
-    var existingCities = await dbContext.Cities.ToDictionaryAsync(x => x.Name, cancellationToken);
     var headerRow = sheet.Row(1);
     var sizeRow = sheet.Row(2);
     var lastColumn = sheet.LastColumnUsed()!.ColumnNumber();
@@ -162,7 +200,7 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     for (var column = 3; column <= lastColumn; column++)
     {
       var cityName = headerRow.Cell(column).GetString();
-      if (string.IsNullOrWhiteSpace(cityName) || existingCities.ContainsKey(cityName))
+      if (string.IsNullOrWhiteSpace(cityName) || citiesByName.ContainsKey(cityName))
       {
         continue;
       }
@@ -175,12 +213,11 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
       };
 
       dbContext.Cities.Add(city);
-      existingCities[cityName] = city;
+      citiesByName[cityName] = city;
       summary.CitiesImported++;
     }
 
     await dbContext.SaveChangesAsync(cancellationToken);
-    return existingCities;
   }
 
   /// <summary>Читает строки 3+ (Тип, Подтип, коэффициент по каждому городу) и наполняет CityModifier.</summary>
@@ -240,9 +277,8 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   #region Импорт листа "Сезонность"
 
   /// <summary>Импортирует матрицу коэффициентов "Тип+Подтип × Сезон".</summary>
-  private static async Task ImportSeasonModifiersAsync(ApplicationDbContext dbContext, XLWorkbook workbook, EconomyImportSummary summary, CancellationToken cancellationToken)
+  private static async Task ImportSeasonModifiersAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
-    var sheet = workbook.Worksheet("Сезонность");
     var headerRow = sheet.Row(1);
     var existingModifiers = await dbContext.SeasonModifiers.ToListAsync(cancellationToken);
 
@@ -297,9 +333,8 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
   /// <summary>Импортирует игровые сессии ("Партии") из листа "Настройки".</summary>
   private static async Task ImportSessionsAsync(
-    ApplicationDbContext dbContext, XLWorkbook workbook, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
+    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
-    var sheet = workbook.Worksheet("Настройки");
     var existingSessions = await dbContext.EconomySessions.ToDictionaryAsync(x => x.Name, cancellationToken);
 
     foreach (var row in sheet.RowsUsed().Skip(1))

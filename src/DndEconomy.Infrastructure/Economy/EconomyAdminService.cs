@@ -133,4 +133,125 @@ public sealed class EconomyAdminService : IEconomyAdminService
       .Where(x => x.Id == sessionId.Value)
       .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsPinnedForDisplay, true), cancellationToken);
   }
+
+  #region Коэффициенты города/сезона
+
+  /// <inheritdoc />
+  public async Task<IReadOnlyList<TypeSubtype>> GetItemTypeSubtypesAsync(CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await dbContext.Items.AsNoTracking()
+      .Select(x => new { x.Type, x.Subtype })
+      .Distinct()
+      .OrderBy(x => x.Type).ThenBy(x => x.Subtype)
+      .Select(x => new TypeSubtype { Type = x.Type, Subtype = x.Subtype })
+      .ToListAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task<CityModifierMatrix> GetCityModifierMatrixAsync(CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var cities = await dbContext.Cities.AsNoTracking()
+      .OrderBy(x => x.Name)
+      .Select(x => new CitySummary { Id = x.Id, Name = x.Name, Size = x.Size })
+      .ToListAsync(cancellationToken);
+
+    var modifiers = await dbContext.CityModifiers.AsNoTracking().ToListAsync(cancellationToken);
+
+    var rows = modifiers
+      .GroupBy(x => (x.Type, x.Subtype))
+      .OrderBy(g => g.Key.Type).ThenBy(g => g.Key.Subtype)
+      .Select(g => new CityModifierMatrixRow
+      {
+        Type = g.Key.Type,
+        Subtype = g.Key.Subtype,
+        CoefficientsByCityId = g.ToDictionary(x => x.CityId, x => x.Coefficient)
+      })
+      .ToList();
+
+    return new CityModifierMatrix { Cities = cities, Rows = rows };
+  }
+
+  /// <inheritdoc />
+  public async Task SetCityModifierAsync(string type, string subtype, Guid cityId, decimal coefficient, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var existing = await dbContext.CityModifiers.SingleOrDefaultAsync(
+      x => x.Type == type && x.Subtype == subtype && x.CityId == cityId, cancellationToken);
+
+    if (existing is not null)
+    {
+      existing.Coefficient = coefficient;
+      existing.UpdatedAtUtc = DateTime.UtcNow;
+    }
+    else
+    {
+      dbContext.CityModifiers.Add(new CityModifier { Type = type, Subtype = subtype, CityId = cityId, Coefficient = coefficient });
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task DeleteCityModifierRowAsync(string type, string subtype, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    await dbContext.CityModifiers
+      .Where(x => x.Type == type && x.Subtype == subtype)
+      .ExecuteDeleteAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task<IReadOnlyList<SeasonModifierMatrixRow>> GetSeasonModifierMatrixAsync(CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var modifiers = await dbContext.SeasonModifiers.AsNoTracking().ToListAsync(cancellationToken);
+
+    return modifiers
+      .GroupBy(x => (x.Type, x.Subtype))
+      .OrderBy(g => g.Key.Type).ThenBy(g => g.Key.Subtype)
+      .Select(g => new SeasonModifierMatrixRow
+      {
+        Type = g.Key.Type,
+        Subtype = g.Key.Subtype,
+        CoefficientsBySeason = g.ToDictionary(x => x.Season, x => x.Coefficient)
+      })
+      .ToList();
+  }
+
+  /// <inheritdoc />
+  public async Task SetSeasonModifierAsync(string type, string subtype, Season season, decimal coefficient, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var existing = await dbContext.SeasonModifiers.SingleOrDefaultAsync(
+      x => x.Type == type && x.Subtype == subtype && x.Season == season, cancellationToken);
+
+    if (existing is not null)
+    {
+      existing.Coefficient = coefficient;
+      existing.UpdatedAtUtc = DateTime.UtcNow;
+    }
+    else
+    {
+      dbContext.SeasonModifiers.Add(new SeasonModifier { Type = type, Subtype = subtype, Season = season, Coefficient = coefficient });
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task DeleteSeasonModifierRowAsync(string type, string subtype, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    await dbContext.SeasonModifiers
+      .Where(x => x.Type == type && x.Subtype == subtype)
+      .ExecuteDeleteAsync(cancellationToken);
+  }
+
+  #endregion
 }

@@ -1,0 +1,187 @@
+@page "/admin/economy/season-modifiers"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using DndEconomy.Application.Catalog
+@using DndEconomy.Application.Economy
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Domain.Enums
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IEconomyAdminService EconomyAdminService
+@inject ICatalogReadStore CatalogReadStore
+@inject IJSRuntime JSRuntime
+@inject ToastService ToastService
+
+<PageTitle>Коэффициенты сезонов — админка Relaxerr</PageTitle>
+<ToastContainer />
+
+<h1>Экономические сессии и города</h1>
+<AdminNav />
+<EconomySubNav />
+
+<p class="catalog-meta">
+  Коэффициент — множитель к базовой стоимости товаров с этим Типом+Подтипом в этом сезоне.
+  Пустых ячеек в таблице нет — всё, что не заведено явно, и так уже считается коэффициентом 1
+  (без изменений). Тип и Подтип должны в точности совпадать с указанными у предмета на странице
+  «Новый предмет» — иначе коэффициент ни к одному товару не применится. То же самое можно
+  загрузить файлом на странице «Импорт Excel» (лист «Сезонность», шаблон —
+  <code>economy-seasons.xlsx</code>).
+</p>
+
+@if (error is not null)
+{
+  <div class="status-message status-message--error">@error</div>
+}
+
+@if (rows is null)
+{
+  <p>Загрузка...</p>
+}
+else
+{
+  <div class="admin-table-wrap">
+    <table class="admin-table admin-matrix-table">
+      <thead>
+        <tr>
+          <th>Тип</th>
+          <th>Подтип</th>
+          @foreach (var season in Seasons)
+          {
+            <th>@SeasonLabel(season)</th>
+          }
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @if (rows.Count == 0)
+        {
+          <tr><td colspan="@(Seasons.Length + 3)" class="catalog-meta">Коэффициентов пока нет — добавьте первую строку ниже.</td></tr>
+        }
+        @foreach (var row in rows)
+        {
+          <tr>
+            <td>@row.Type</td>
+            <td>@row.Subtype</td>
+            @foreach (var season in Seasons)
+            {
+              var rowType = row.Type;
+              var rowSubtype = row.Subtype;
+              var currentSeason = season;
+              var currentValue = row.CoefficientsBySeason.GetValueOrDefault(currentSeason, 1m);
+              <td>
+                <input type="number" step="0.01" class="admin-matrix-table__input"
+                       value="@currentValue.ToString(CultureInfo.InvariantCulture)"
+                       @onchange="e => SaveCellAsync(rowType, rowSubtype, currentSeason, e.Value)" />
+              </td>
+            }
+            <td>
+              <button type="button" class="btn admin-matrix-table__delete" @onclick="() => DeleteRowAsync(row.Type, row.Subtype)">Удалить</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+<section class="auth-card">
+  <h2>Добавить строку (Тип + Подтип)</h2>
+  <EditForm Model="newRow" OnValidSubmit="AddRowAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="validation-summary" />
+    <div class="form-field"><label>Тип</label><InputText @bind-Value="newRow.Type" list="season-mod-type-options" /></div>
+    <div class="form-field"><label>Подтип</label><InputText @bind-Value="newRow.Subtype" list="season-mod-subtype-options" /></div>
+    <button type="submit" class="btn btn--primary">Добавить строку</button>
+  </EditForm>
+</section>
+
+<datalist id="season-mod-type-options">
+  @foreach (var type in types)
+  {
+    <option value="@type" />
+  }
+</datalist>
+<datalist id="season-mod-subtype-options">
+  @foreach (var subtype in subtypes)
+  {
+    <option value="@subtype" />
+  }
+</datalist>
+
+@code {
+  private static readonly Season[] Seasons = [Season.Spring, Season.Summer, Season.Autumn, Season.Winter];
+
+  private IReadOnlyList<SeasonModifierMatrixRow>? rows;
+  private IReadOnlyList<string> types = [];
+  private IReadOnlyList<string> subtypes = [];
+  private NewRowModel newRow = new();
+  private string? error;
+
+  protected override async Task OnInitializedAsync()
+  {
+    types = await CatalogReadStore.GetDistinctTypesAsync(null, CancellationToken.None);
+    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    rows = await EconomyAdminService.GetSeasonModifierMatrixAsync(CancellationToken.None);
+  }
+
+  private async Task SaveCellAsync(string type, string subtype, Season season, object? value)
+  {
+    if (!decimal.TryParse(value?.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var coefficient))
+      return;
+
+    await EconomyAdminService.SetSeasonModifierAsync(type, subtype, season, coefficient, CancellationToken.None);
+    await ReloadAsync();
+    ToastService.ShowSuccess("Коэффициент обновлён");
+  }
+
+  private async Task AddRowAsync()
+  {
+    error = null;
+
+    if (rows is not null && rows.Any(r => r.Type == newRow.Type && r.Subtype == newRow.Subtype))
+    {
+      error = $"Строка «{newRow.Type} / {newRow.Subtype}» уже есть — отредактируйте коэффициенты прямо в таблице.";
+      return;
+    }
+
+    foreach (var season in Seasons)
+    {
+      await EconomyAdminService.SetSeasonModifierAsync(newRow.Type, newRow.Subtype, season, 1m, CancellationToken.None);
+    }
+
+    newRow = new();
+    await ReloadAsync();
+    ToastService.ShowSuccess("Строка добавлена");
+  }
+
+  private async Task DeleteRowAsync(string type, string subtype)
+  {
+    var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Удалить коэффициенты «{type} / {subtype}» для всех сезонов?");
+    if (!confirmed)
+      return;
+
+    await EconomyAdminService.DeleteSeasonModifierRowAsync(type, subtype, CancellationToken.None);
+    await ReloadAsync();
+    ToastService.ShowSuccess("Строка удалена");
+  }
+
+  private static string SeasonLabel(Season season) => season switch
+  {
+    Season.Spring => "Весна",
+    Season.Summer => "Лето",
+    Season.Autumn => "Осень",
+    Season.Winter => "Зима",
+    _ => season.ToString()
+  };
+
+  private sealed class NewRowModel
+  {
+    [Required] public string Type { get; set; } = "";
+    [Required] public string Subtype { get; set; } = "";
+  }
+}
