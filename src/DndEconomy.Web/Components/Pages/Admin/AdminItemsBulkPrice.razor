@@ -1,0 +1,158 @@
+@page "/admin/items/bulk-price"
+@rendermode InteractiveServer
+@using System.Globalization
+@using DndEconomy.Application.Items
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Domain.Enums
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IItemAdminService ItemAdminService
+@inject IJSRuntime JSRuntime
+@inject ToastService ToastService
+
+<PageTitle>Глобальное управление стоимостью — админка Relaxerr</PageTitle>
+<ToastContainer />
+
+<h1>Глобальное управление стоимостью</h1>
+<AdminNav />
+
+<p class="catalog-meta">
+  Массовое изменение базовой стоимости (BaseCost) предметов, попадающих в указанный диапазон
+  цены. Результат округляется до целого числа монет и не может уйти ниже 0. Изменение
+  необратимо — перед применением обязательно постройте предпросмотр.
+</p>
+
+@if (error is not null)
+{
+  <div class="status-message status-message--error">@error</div>
+}
+
+<section class="auth-card">
+  <EditForm Model="model" OnValidSubmit="BuildPreviewAsync">
+    <div class="form-field">
+      <label>Стоимость от <span class="input-hint">(включительно, необязательно)</span></label>
+      <InputNumber @bind-Value="model.MinCost" />
+    </div>
+    <div class="form-field">
+      <label>Стоимость до <span class="input-hint">(включительно, необязательно)</span></label>
+      <InputNumber @bind-Value="model.MaxCost" />
+    </div>
+    <div class="form-field">
+      <label>Операция</label>
+      <InputSelect @bind-Value="model.Operation">
+        <option value="@BulkPriceOperation.Add">Прибавить</option>
+        <option value="@BulkPriceOperation.Multiply">Умножить</option>
+        <option value="@BulkPriceOperation.SetTo">Приравнять к</option>
+      </InputSelect>
+    </div>
+    <div class="form-field">
+      <label>Значение <span class="input-hint">(@ValueHint)</span></label>
+      <InputNumber @bind-Value="model.Value" />
+    </div>
+
+    <button type="submit" class="btn btn--primary">Построить предпросмотр</button>
+  </EditForm>
+</section>
+
+@if (preview is not null)
+{
+  <section class="auth-card">
+    <h2>Предпросмотр — затронуто предметов: @preview.Count</h2>
+
+    @if (preview.Count == 0)
+    {
+      <p class="catalog-meta">Ни один предмет не попадает под указанный диапазон стоимости.</p>
+    }
+    else
+    {
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Предмет</th>
+              <th>Тип / Подтип</th>
+              <th>Было</th>
+              <th>Станет</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach (var row in preview)
+            {
+              <tr>
+                <td>@row.NameRu</td>
+                <td>@row.Type / @row.Subtype</td>
+                <td>@row.OldCost.ToString("0", CultureInfo.InvariantCulture)</td>
+                <td>@row.NewCost.ToString("0", CultureInfo.InvariantCulture)</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <button type="button" class="btn btn--primary" @onclick="ApplyAsync">Применить изменение</button>
+    }
+  </section>
+}
+
+@code {
+  private FilterModel model = new();
+  private IReadOnlyList<BulkPriceUpdatePreviewRow>? preview;
+  private BulkPriceUpdateInput? previewedInput;
+  private string? error;
+
+  private string ValueHint => model.Operation switch
+  {
+    BulkPriceOperation.Add => "прибавляется к текущей стоимости; отрицательное значение — чтобы уменьшить",
+    BulkPriceOperation.Multiply => "во сколько раз умножить стоимость; дробное значение (например, 0.5) — чтобы поделить",
+    BulkPriceOperation.SetTo => "новая стоимость для всех отобранных предметов",
+    _ => ""
+  };
+
+  private async Task BuildPreviewAsync()
+  {
+    error = null;
+    preview = null;
+    previewedInput = null;
+
+    if (model.MinCost.HasValue && model.MaxCost.HasValue && model.MinCost > model.MaxCost)
+    {
+      error = "Нижняя граница стоимости не может быть больше верхней.";
+      return;
+    }
+
+    var input = BuildInput();
+    preview = await ItemAdminService.PreviewBulkPriceUpdateAsync(input, CancellationToken.None);
+    previewedInput = input;
+  }
+
+  private async Task ApplyAsync()
+  {
+    if (previewedInput is null || preview is null || preview.Count == 0)
+      return;
+
+    var confirmed = await JSRuntime.InvokeAsync<bool>(
+      "confirm", $"Изменить стоимость (предметов: {preview.Count})? Действие необратимо.");
+    if (!confirmed)
+      return;
+
+    var updatedCount = await ItemAdminService.ApplyBulkPriceUpdateAsync(previewedInput, CancellationToken.None);
+    ToastService.ShowSuccess($"Стоимость обновлена (предметов: {updatedCount}).");
+
+    preview = null;
+    previewedInput = null;
+  }
+
+  private BulkPriceUpdateInput BuildInput() => new()
+  {
+    Filter = new BulkPriceUpdateFilter { MinCost = model.MinCost, MaxCost = model.MaxCost },
+    Operation = model.Operation,
+    Value = model.Value
+  };
+
+  private sealed class FilterModel
+  {
+    public decimal? MinCost { get; set; }
+    public decimal? MaxCost { get; set; }
+    public BulkPriceOperation Operation { get; set; } = BulkPriceOperation.Add;
+    public decimal Value { get; set; }
+  }
+}
