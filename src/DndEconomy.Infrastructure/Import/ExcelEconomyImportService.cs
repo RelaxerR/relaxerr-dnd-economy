@@ -121,9 +121,25 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   /// <summary>Импортирует справочник предметов из листа "Предметы".</summary>
   private static async Task ImportItemsAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
-    var existingByUuid = await dbContext.Items
-      .Where(x => x.ExternalUuid != null)
-      .ToDictionaryAsync(x => x.ExternalUuid!, cancellationToken);
+    // GetString() у пустой ячейки возвращает "", а не null — раньше это попадало в словарь как
+    // ключ ExternalUuid == "" для КАЖДОГО предмета без UUID (их в исходнике большинство). Пустая
+    // строка проходила фильтр "!= null", и на любой второй загрузке ToDictionaryAsync падал с
+    // "An item with the same key has already been added", как только предметов без UUID
+    // набиралось больше одного. Пустые/пробельные значения теперь приравниваются к null.
+    // Предметы без UUID сопоставляются по составному ключу (Категория, Тип, Подтип, NameRu) —
+    // тому же, по которому они уникальны в исходной Excel-модели — иначе повторная загрузка
+    // такого предмета создавала бы новый дубликат при каждой загрузке (что и произошло: в БД
+    // уже была пара дублей вроде "Резная статуэтка" × 2 до этого фикса).
+    var allItems = await dbContext.Items.ToListAsync(cancellationToken);
+
+    var existingByUuid = allItems
+      .Where(x => !string.IsNullOrEmpty(x.ExternalUuid))
+      .GroupBy(x => x.ExternalUuid!)
+      .ToDictionary(g => g.Key, g => g.First());
+
+    var existingByComposite = allItems
+      .GroupBy(x => (x.Category, x.Type, x.Subtype, x.NameRu))
+      .ToDictionary(g => g.Key, g => g.First());
 
     foreach (var row in sheet.RowsUsed().Skip(1))
     {
@@ -134,19 +150,33 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
       }
 
       var (nameRu, nameEn) = SplitItemName(rawName);
-      var externalUuid = row.Cell(7).GetString();
+      var rawExternalUuid = row.Cell(7).GetString();
+      var externalUuid = string.IsNullOrWhiteSpace(rawExternalUuid) ? null : rawExternalUuid.Trim();
+      var category = row.Cell(1).GetString();
+      var type = row.Cell(2).GetString();
+      var subtype = row.Cell(3).GetString();
 
-      var isNewItem = !existingByUuid.TryGetValue(externalUuid, out var item);
+      var item = (externalUuid is not null && existingByUuid.TryGetValue(externalUuid, out var byUuid))
+        ? byUuid
+        : existingByComposite.GetValueOrDefault((category, type, subtype, nameRu));
+      var isNewItem = item is null;
       item ??= new Item { ExternalUuid = externalUuid };
 
-      item.Category = row.Cell(1).GetString();
-      item.Type = row.Cell(2).GetString();
-      item.Subtype = row.Cell(3).GetString();
+      item.Category = category;
+      item.Type = type;
+      item.Subtype = subtype;
       item.NameRu = nameRu;
       item.NameEn = nameEn;
       item.BaseCost = row.Cell(5).GetValue<decimal>();
       item.Weight = row.Cell(6).GetValue<decimal>();
       item.UpdatedAtUtc = DateTime.UtcNow;
+
+      // Не затираем уже сохранённый UUID пустым значением, если в этой загрузке колонка
+      // "UUID (Foundry)" для найденного по составному ключу предмета вдруг оказалась пустой.
+      if (externalUuid is not null)
+      {
+        item.ExternalUuid = externalUuid;
+      }
 
       // Item.Id получает Guid.NewGuid() уже в конструкторе (AuditableEntity) — проверка
       // "Id == default" здесь не сработала бы никогда, поэтому отслеживаем "новый ли объект"
