@@ -4,6 +4,7 @@ using DndEconomy.Application.Import;
 using DndEconomy.Domain.Entities;
 using DndEconomy.Domain.Enums;
 using DndEconomy.Infrastructure.Persistence;
+using DocumentFormat.OpenXml.Packaging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -63,7 +64,8 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   {
     _logger.LogInformation("Начат импорт таблицы экономики");
 
-    using var workbook = new XLWorkbook(fileStream);
+    using var sanitizedStream = StripLegacyComments(fileStream);
+    using var workbook = new XLWorkbook(sanitizedStream);
     var summary = new EconomyImportSummary();
     var recognizedAnySheet = false;
 
@@ -112,6 +114,55 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
       summary.ItemsImported, summary.CitiesImported, summary.CityModifiersImported, summary.SeasonModifiersImported, summary.SessionsImported);
 
     return summary;
+  }
+
+  /// <summary>
+  /// Вырезает из книги старые VML cell-комментарии (заметки) перед тем, как её увидит ClosedXML.
+  /// Мастер-таблица кампании ("Задание точно финал N.xlsx") сделана не в настоящем Excel (шрифт
+  /// "Helvetica Neue", пространство имён macVmlSchemaUri в VML), и такие редакторы не пишут
+  /// обязательный для Excel элемент &lt;v:textbox&gt; внутри фигуры комментария. ClosedXML
+  /// 0.105.1 не умеет с этим работать — падает на первом же комментарии с "Sequence contains no
+  /// matching element" (открытый и не исправленный годами баг библиотеки,
+  /// github.com/ClosedXML/ClosedXML/issues/1772), то есть открыть такую книгу не получится вообще
+  /// ни при каком составе листов. Импорт нигде не читает текст комментариев, поэтому их можно
+  /// целиком выбросить средствами Open XML SDK (который открывает файл нормально — ломается
+  /// именно построчный разбор ClosedXML) — так админу не нужно вручную чистить комментарии в
+  /// мастер-файле перед каждой перезаливкой.
+  /// </summary>
+  private static Stream StripLegacyComments(Stream fileStream)
+  {
+    var buffer = new MemoryStream();
+    fileStream.CopyTo(buffer);
+    buffer.Position = 0;
+
+    using (var document = SpreadsheetDocument.Open(buffer, isEditable: true))
+    {
+      foreach (var worksheetPart in document.WorkbookPart!.WorksheetParts)
+      {
+        var hadLegacyComments = false;
+
+        if (worksheetPart.WorksheetCommentsPart is { } commentsPart)
+        {
+          worksheetPart.DeletePart(commentsPart);
+          hadLegacyComments = true;
+        }
+
+        foreach (var vmlPart in worksheetPart.VmlDrawingParts.ToList())
+        {
+          worksheetPart.DeletePart(vmlPart);
+          hadLegacyComments = true;
+        }
+
+        if (hadLegacyComments)
+        {
+          worksheetPart.Worksheet.RemoveAllChildren<DocumentFormat.OpenXml.Spreadsheet.LegacyDrawing>();
+          worksheetPart.Worksheet.Save();
+        }
+      }
+    }
+
+    buffer.Position = 0;
+    return buffer;
   }
 
   #endregion

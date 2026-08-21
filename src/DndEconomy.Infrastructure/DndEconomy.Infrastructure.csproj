@@ -14,6 +14,9 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <!-- ClosedXML используется в ExcelEconomyImportService (Фаза 0/1) для разбора исходной таблицы -->
     <PackageReference Include="ClosedXML" Version="0.105.1" />
+    <!-- Прямая ссылка на Open XML SDK (иначе транзитивный через ClosedXML) — используется в
+         ExcelEconomyImportService.StripLegacyComments для обхода бага ClosedXML #1772. -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
   </ItemGroup>
 
   <ItemGroup>
