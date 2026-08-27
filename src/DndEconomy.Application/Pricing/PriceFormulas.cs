@@ -2,9 +2,11 @@ namespace DndEconomy.Application.Pricing;
 
 /// <summary>
 /// Формулы расчёта цены из исходной Excel-модели, общие для одиночного расчёта
-/// (<see cref="PriceCalculationService"/>) и bulk-расчёта в каталоге.
+/// (<see cref="PriceCalculationService"/>), bulk-расчёта в каталоге и предпросмотра массового
+/// изменения базовой стоимости в админке (<c>ItemAdminService</c> в Infrastructure — отсюда
+/// класс публичный, а не internal).
 /// </summary>
-internal static class PriceFormulas
+public static class PriceFormulas
 {
   /// <summary>РассчитаннаяСтоимость = БазоваяСтоимость × КэфСессии × КэфГорода × КэфСезона.</summary>
   public static decimal CalculateRawCost(decimal baseCost, decimal sessionCoefficient, decimal cityCoefficient, decimal seasonCoefficient)

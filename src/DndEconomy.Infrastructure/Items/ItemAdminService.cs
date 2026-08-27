@@ -1,4 +1,5 @@
 using DndEconomy.Application.Items;
+using DndEconomy.Application.Pricing;
 using DndEconomy.Domain.Entities;
 using DndEconomy.Domain.Enums;
 using DndEconomy.Infrastructure.Persistence;
@@ -13,11 +14,19 @@ public sealed class ItemAdminService : IItemAdminService
   #region Поля и конструктор
 
   private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+  private readonly IEconomyPricingReadStore _pricingReadStore;
+  private readonly TimeProvider _timeProvider;
   private readonly ILogger<ItemAdminService> _logger;
 
-  public ItemAdminService(IDbContextFactory<ApplicationDbContext> dbContextFactory, ILogger<ItemAdminService> logger)
+  public ItemAdminService(
+    IDbContextFactory<ApplicationDbContext> dbContextFactory,
+    IEconomyPricingReadStore pricingReadStore,
+    TimeProvider timeProvider,
+    ILogger<ItemAdminService> logger)
   {
     _dbContextFactory = dbContextFactory;
+    _pricingReadStore = pricingReadStore;
+    _timeProvider = timeProvider;
     _logger = logger;
   }
 
@@ -53,20 +62,15 @@ public sealed class ItemAdminService : IItemAdminService
   {
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-    var items = await ApplyFilter(dbContext.Items.AsNoTracking(), input.Filter)
-      .OrderBy(i => i.NameRu)
+    var today = DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
+    var session = await _pricingReadStore.GetActiveSessionContextAsync(today, cancellationToken);
+
+    var rows = await BuildItemsWithModifiersQuery(dbContext, input.Filter, session)
+      .OrderBy(x => x.NameRu)
       .ToListAsync(cancellationToken);
 
-    var preview = items
-      .Select(item => new BulkPriceUpdatePreviewRow
-      {
-        ItemId = item.Id,
-        NameRu = item.NameRu,
-        Type = item.Type,
-        Subtype = item.Subtype,
-        OldCost = item.BaseCost,
-        NewCost = CalculateNewCost(item.BaseCost, input.Operation, input.Value)
-      })
+    var preview = rows
+      .Select(row => BuildPreviewRow(row, input.Operation, input.Value, session))
       .ToList();
 
     _logger.LogInformation(
@@ -112,6 +116,110 @@ public sealed class ItemAdminService : IItemAdminService
       query = query.Where(i => i.BaseCost <= filter.MaxCost.Value);
 
     return query;
+  }
+
+  /// <summary>
+  /// Отобранные по фильтру предметы вместе с коэффициентами города/сезона активной сессии
+  /// (1, если модификатора для пары Тип+Подтип нет) — одним запросом с LEFT JOIN, тем же
+  /// приёмом, что и <c>CatalogReadStore.BuildPricedQuery</c>, чтобы не дёргать
+  /// IEconomyPricingReadStore по коэффициенту на каждый предмет отдельно (N+1). Если активной
+  /// сессии нет вообще, коэффициенты не имеют смысла — возвращаются как 1, а итоговую
+  /// цену покупки/продажи <see cref="BuildPreviewRow"/> в этом случае не считает совсем.
+  /// </summary>
+  private static IQueryable<ItemWithModifiers> BuildItemsWithModifiersQuery(
+    ApplicationDbContext dbContext, BulkPriceUpdateFilter filter, ActiveSessionContext? session)
+  {
+    var items = ApplyFilter(dbContext.Items.AsNoTracking(), filter);
+
+    if (session is null)
+    {
+      return items.Select(item => new ItemWithModifiers
+      {
+        ItemId = item.Id,
+        NameRu = item.NameRu,
+        Type = item.Type,
+        Subtype = item.Subtype,
+        BaseCost = item.BaseCost,
+        CityCoefficient = 1m,
+        SeasonCoefficient = 1m
+      });
+    }
+
+    var cityModifiers = dbContext.CityModifiers.Where(cm => cm.CityId == session.CityId);
+    var seasonModifiers = dbContext.SeasonModifiers.Where(sm => sm.Season == session.Season);
+
+    return
+      from item in items
+      join cityMod in cityModifiers
+        on new { item.Type, item.Subtype } equals new { cityMod.Type, cityMod.Subtype } into cityModsJoin
+      from cityMod in cityModsJoin.DefaultIfEmpty()
+      join seasonMod in seasonModifiers
+        on new { item.Type, item.Subtype } equals new { seasonMod.Type, seasonMod.Subtype } into seasonModsJoin
+      from seasonMod in seasonModsJoin.DefaultIfEmpty()
+      select new ItemWithModifiers
+      {
+        ItemId = item.Id,
+        NameRu = item.NameRu,
+        Type = item.Type,
+        Subtype = item.Subtype,
+        BaseCost = item.BaseCost,
+        CityCoefficient = cityMod != null ? cityMod.Coefficient : 1m,
+        SeasonCoefficient = seasonMod != null ? seasonMod.Coefficient : 1m
+      };
+  }
+
+  /// <summary>
+  /// Строит строку предпросмотра: базовая стоимость до/после операции плюс, если активная
+  /// сессия есть, итоговые цены покупки/продажи до/после — те же формулы
+  /// (<see cref="PriceFormulas"/>), что использует каталог, применённые к старой и новой
+  /// базовой стоимости при одних и тех же коэффициентах сессии/города/сезона.
+  /// </summary>
+  private static BulkPriceUpdatePreviewRow BuildPreviewRow(
+    ItemWithModifiers row, BulkPriceOperation operation, decimal value, ActiveSessionContext? session)
+  {
+    var newCost = CalculateNewCost(row.BaseCost, operation, value);
+
+    decimal? oldBuyPrice = null;
+    decimal? newBuyPrice = null;
+    decimal? oldSellPrice = null;
+    decimal? newSellPrice = null;
+
+    if (session is not null)
+    {
+      var oldCalculatedCost = PriceFormulas.CalculateRawCost(row.BaseCost, session.BaseCoefficient, row.CityCoefficient, row.SeasonCoefficient);
+      var newCalculatedCost = PriceFormulas.CalculateRawCost(newCost, session.BaseCoefficient, row.CityCoefficient, row.SeasonCoefficient);
+
+      oldBuyPrice = PriceFormulas.ResolveBuyPrice(oldCalculatedCost);
+      newBuyPrice = PriceFormulas.ResolveBuyPrice(newCalculatedCost);
+      oldSellPrice = PriceFormulas.ResolveSellPrice(oldCalculatedCost, row.BaseCost, session.SellCoefficient);
+      newSellPrice = PriceFormulas.ResolveSellPrice(newCalculatedCost, newCost, session.SellCoefficient);
+    }
+
+    return new BulkPriceUpdatePreviewRow
+    {
+      ItemId = row.ItemId,
+      NameRu = row.NameRu,
+      Type = row.Type,
+      Subtype = row.Subtype,
+      OldCost = row.BaseCost,
+      NewCost = newCost,
+      OldBuyPrice = oldBuyPrice,
+      NewBuyPrice = newBuyPrice,
+      OldSellPrice = oldSellPrice,
+      NewSellPrice = newSellPrice
+    };
+  }
+
+  /// <summary>Промежуточная проекция для <see cref="BuildItemsWithModifiersQuery"/>.</summary>
+  private sealed class ItemWithModifiers
+  {
+    public required Guid ItemId { get; init; }
+    public required string NameRu { get; init; }
+    public required string Type { get; init; }
+    public required string Subtype { get; init; }
+    public required decimal BaseCost { get; init; }
+    public required decimal CityCoefficient { get; init; }
+    public required decimal SeasonCoefficient { get; init; }
   }
 
   /// <summary>

@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using System.Globalization
 @using DndEconomy.Application.Items
+@using DndEconomy.Application.Pricing
 @using DndEconomy.Domain.Constants
 @using DndEconomy.Domain.Enums
 @attribute [Authorize(Roles = RoleNames.Admin)]
@@ -64,14 +65,26 @@
     }
     else
     {
+      @if (!preview[0].OldSellPrice.HasValue)
+      {
+        <p class="catalog-meta">
+          Нет активной экономической сессии — показана только базовая стоимость, реальную цену
+          покупки/продажи для игроков посчитать не получится.
+        </p>
+      }
+
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead>
             <tr>
               <th>Предмет</th>
               <th>Тип / Подтип</th>
-              <th>Было</th>
-              <th>Станет</th>
+              <th>Базовая стоимость: было</th>
+              <th>Базовая стоимость: станет</th>
+              <th>Покупка: было</th>
+              <th>Покупка: станет</th>
+              <th>Продажа: было</th>
+              <th>Продажа: станет</th>
             </tr>
           </thead>
           <tbody>
@@ -82,6 +95,10 @@
                 <td>@row.Type / @row.Subtype</td>
                 <td>@row.OldCost.ToString("0", CultureInfo.InvariantCulture)</td>
                 <td>@row.NewCost.ToString("0", CultureInfo.InvariantCulture)</td>
+                <td>@(row.OldBuyPrice is not null ? CurrencyFormatter.Format(row.OldBuyPrice.Value) : "Нет в наличии")</td>
+                <td>@(row.NewBuyPrice is not null ? CurrencyFormatter.Format(row.NewBuyPrice.Value) : "Нет в наличии")</td>
+                <td>@(row.OldSellPrice is not null ? CurrencyFormatter.Format(row.OldSellPrice.Value) : "—")</td>
+                <td>@(row.NewSellPrice is not null ? CurrencyFormatter.Format(row.NewSellPrice.Value) : "—")</td>
               </tr>
             }
           </tbody>

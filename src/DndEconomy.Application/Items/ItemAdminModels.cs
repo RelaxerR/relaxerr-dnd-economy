@@ -1,3 +1,4 @@
+using DndEconomy.Application.Pricing;
 using DndEconomy.Domain.Enums;
 
 namespace DndEconomy.Application.Items;
@@ -35,7 +36,11 @@ public sealed record BulkPriceUpdateInput
 
 /// <summary>
 /// Одна строка предпросмотра массового изменения стоимости — предмет, его текущая и
-/// пересчитанная (но ещё не сохранённая) базовая стоимость.
+/// пересчитанная (но ещё не сохранённая) базовая стоимость, а также итоговые цены
+/// покупки/продажи для активной экономической сессии до и после изменения (та же цена, что
+/// увидит игрок в каталоге). Цены покупки/продажи — null, если активной сессии нет вообще
+/// (расчёт невозможен); цена покупки дополнительно null, если товара нет в наличии
+/// (см. <see cref="PriceFormulas.ResolveBuyPrice"/>).
 /// </summary>
 public sealed record BulkPriceUpdatePreviewRow
 {
@@ -45,4 +50,8 @@ public sealed record BulkPriceUpdatePreviewRow
   public required string Subtype { get; init; }
   public required decimal OldCost { get; init; }
   public required decimal NewCost { get; init; }
+  public decimal? OldBuyPrice { get; init; }
+  public decimal? NewBuyPrice { get; init; }
+  public decimal? OldSellPrice { get; init; }
+  public decimal? NewSellPrice { get; init; }
 }
