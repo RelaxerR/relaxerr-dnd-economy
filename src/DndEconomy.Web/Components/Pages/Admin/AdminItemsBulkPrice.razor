@@ -56,58 +56,56 @@
 
 @if (preview is not null)
 {
-  <section class="auth-card">
-    <h2>Предпросмотр — затронуто предметов: @preview.Count</h2>
+  <h2>Предпросмотр — затронуто предметов: @preview.Count</h2>
 
-    @if (preview.Count == 0)
+  @if (preview.Count == 0)
+  {
+    <p class="catalog-meta">Ни один предмет не попадает под указанный диапазон стоимости.</p>
+  }
+  else
+  {
+    @if (!preview[0].OldSellPrice.HasValue)
     {
-      <p class="catalog-meta">Ни один предмет не попадает под указанный диапазон стоимости.</p>
+      <p class="catalog-meta">
+        Нет активной экономической сессии — показана только базовая стоимость, реальную цену
+        покупки/продажи для игроков посчитать не получится.
+      </p>
     }
-    else
-    {
-      @if (!preview[0].OldSellPrice.HasValue)
-      {
-        <p class="catalog-meta">
-          Нет активной экономической сессии — показана только базовая стоимость, реальную цену
-          покупки/продажи для игроков посчитать не получится.
-        </p>
-      }
 
-      <div class="admin-table-wrap">
-        <table class="admin-table">
-          <thead>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Предмет</th>
+            <th>Тип / Подтип</th>
+            <th>Базовая стоимость: было</th>
+            <th>Базовая стоимость: станет</th>
+            <th>Покупка: было</th>
+            <th>Покупка: станет</th>
+            <th>Продажа: было</th>
+            <th>Продажа: станет</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var row in preview)
+          {
             <tr>
-              <th>Предмет</th>
-              <th>Тип / Подтип</th>
-              <th>Базовая стоимость: было</th>
-              <th>Базовая стоимость: станет</th>
-              <th>Покупка: было</th>
-              <th>Покупка: станет</th>
-              <th>Продажа: было</th>
-              <th>Продажа: станет</th>
+              <td>@row.NameRu</td>
+              <td>@row.Type / @row.Subtype</td>
+              <td>@row.OldCost.ToString("0", CultureInfo.InvariantCulture)</td>
+              <td>@row.NewCost.ToString("0", CultureInfo.InvariantCulture)</td>
+              <td>@(row.OldBuyPrice is not null ? CurrencyFormatter.Format(row.OldBuyPrice.Value) : "Нет в наличии")</td>
+              <td>@(row.NewBuyPrice is not null ? CurrencyFormatter.Format(row.NewBuyPrice.Value) : "Нет в наличии")</td>
+              <td>@(row.OldSellPrice is not null ? CurrencyFormatter.Format(row.OldSellPrice.Value) : "—")</td>
+              <td>@(row.NewSellPrice is not null ? CurrencyFormatter.Format(row.NewSellPrice.Value) : "—")</td>
             </tr>
-          </thead>
-          <tbody>
-            @foreach (var row in preview)
-            {
-              <tr>
-                <td>@row.NameRu</td>
-                <td>@row.Type / @row.Subtype</td>
-                <td>@row.OldCost.ToString("0", CultureInfo.InvariantCulture)</td>
-                <td>@row.NewCost.ToString("0", CultureInfo.InvariantCulture)</td>
-                <td>@(row.OldBuyPrice is not null ? CurrencyFormatter.Format(row.OldBuyPrice.Value) : "Нет в наличии")</td>
-                <td>@(row.NewBuyPrice is not null ? CurrencyFormatter.Format(row.NewBuyPrice.Value) : "Нет в наличии")</td>
-                <td>@(row.OldSellPrice is not null ? CurrencyFormatter.Format(row.OldSellPrice.Value) : "—")</td>
-                <td>@(row.NewSellPrice is not null ? CurrencyFormatter.Format(row.NewSellPrice.Value) : "—")</td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
+          }
+        </tbody>
+      </table>
+    </div>
 
-      <button type="button" class="btn btn--primary" @onclick="ApplyAsync">Применить изменение</button>
-    }
-  </section>
+    <button type="button" class="btn btn--primary" @onclick="ApplyAsync">Применить изменение</button>
+  }
 }
 
 @code {
