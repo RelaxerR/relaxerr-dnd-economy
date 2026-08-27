@@ -76,28 +76,20 @@
       <table class="admin-table">
         <thead>
           <tr>
-            <th>Предмет</th>
-            <th>Тип / Подтип</th>
-            <th>Базовая стоимость: было</th>
-            <th>Базовая стоимость: станет</th>
-            <th>Покупка: было</th>
-            <th>Покупка: станет</th>
-            <th>Продажа: было</th>
-            <th>Продажа: станет</th>
+            <th class="admin-table__name-col">Предмет</th>
+            <th>Базовая стоимость</th>
+            <th>Покупка</th>
+            <th>Продажа</th>
           </tr>
         </thead>
         <tbody>
           @foreach (var row in preview)
           {
             <tr>
-              <td>@row.NameRu</td>
-              <td>@row.Type / @row.Subtype</td>
-              <td>@row.OldCost.ToString("0", CultureInfo.InvariantCulture)</td>
-              <td>@row.NewCost.ToString("0", CultureInfo.InvariantCulture)</td>
-              <td>@(row.OldBuyPrice is not null ? CurrencyFormatter.Format(row.OldBuyPrice.Value) : "Нет в наличии")</td>
-              <td>@(row.NewBuyPrice is not null ? CurrencyFormatter.Format(row.NewBuyPrice.Value) : "Нет в наличии")</td>
-              <td>@(row.OldSellPrice is not null ? CurrencyFormatter.Format(row.OldSellPrice.Value) : "—")</td>
-              <td>@(row.NewSellPrice is not null ? CurrencyFormatter.Format(row.NewSellPrice.Value) : "—")</td>
+              <td class="admin-table__name-col">@row.NameRu</td>
+              <td>@row.OldCost.ToString("0", CultureInfo.InvariantCulture) → @row.NewCost.ToString("0", CultureInfo.InvariantCulture)</td>
+              <td>@FormatBuyPrice(row.OldBuyPrice) → @FormatBuyPrice(row.NewBuyPrice)</td>
+              <td>@FormatSellPrice(row.OldSellPrice) → @FormatSellPrice(row.NewSellPrice)</td>
             </tr>
           }
         </tbody>
@@ -113,6 +105,10 @@
   private IReadOnlyList<BulkPriceUpdatePreviewRow>? preview;
   private BulkPriceUpdateInput? previewedInput;
   private string? error;
+
+  private static string FormatBuyPrice(decimal? price) => price is not null ? CurrencyFormatter.Format(price.Value) : "Нет в наличии";
+
+  private static string FormatSellPrice(decimal? price) => price is not null ? CurrencyFormatter.Format(price.Value) : "—";
 
   private string ValueHint => model.Operation switch
   {

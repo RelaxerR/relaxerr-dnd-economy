@@ -556,6 +556,17 @@ body {
   background: rgba(139, 94, 52, 0.06);
 }
 
+/* Названия предметов в /admin/items/bulk-price доходят до 80+ символов — при общем nowrap
+   таблицы это растягивало колонку "Предмет" на 600+px и выталкивало цены за пределы видимой
+   области .admin-table-wrap (обычная прокрутка внутри узкого div легко остаётся незамеченной). */
+/* .admin-table th/td задают nowrap с более высокой специфичностью (класс+элемент), поэтому
+   здесь нужен тот же селектор с элементом, а не просто .admin-table__name-col. */
+.admin-table th.admin-table__name-col,
+.admin-table td.admin-table__name-col {
+  white-space: normal;
+  max-width: 320px;
+}
+
 /* Строка пользователя в /admin/users — текст слева, кнопка удаления справа (см. AdminUsers.razor) */
 
 .admin-user-row {
