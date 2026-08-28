@@ -23,6 +23,8 @@ services:
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       AdminSeed__Email: ${ADMIN_SEED_EMAIL}
       AdminSeed__Password: ${ADMIN_SEED_PASSWORD}
+      MacroApi__PlayerKey: ${MACRO_API_PLAYER_KEY}
+      MacroApi__AdminKey: ${MACRO_API_ADMIN_KEY}
     ports:
       - "127.0.0.1:5041:8080"
     networks:

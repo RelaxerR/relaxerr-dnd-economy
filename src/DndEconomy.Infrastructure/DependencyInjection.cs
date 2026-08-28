@@ -43,7 +43,7 @@ public static class DependencyInjection
   public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
   {
     AddPersistence(services, configuration);
-    AddIdentityWithCookies(services);
+    AddIdentityWithCookies(services, configuration);
     AddSeeding(services, configuration);
     AddApplicationServices(services);
 
@@ -72,8 +72,10 @@ public static class DependencyInjection
   /// AddIdentityCore (а не полный AddIdentity) + явное подключение cookie-схемы через
   /// AddIdentityCookies и secure-by-default авторизация: без [AllowAnonymous] доступ
   /// требует и логина, и завершённой смены временного пароля (MustChangePassword=false).
+  /// Дополнительно регистрирует схему MacroApiKey (см. ApiKeyAuthenticationHandler) — отдельный
+  /// от cookie путь аутентификации для макросов Foundry VTT, читающих API каталога.
   /// </summary>
-  private static void AddIdentityWithCookies(IServiceCollection services)
+  private static void AddIdentityWithCookies(IServiceCollection services, IConfiguration configuration)
   {
     services
       .AddIdentityCore<ApplicationUser>(options =>
@@ -96,13 +98,20 @@ public static class DependencyInjection
       .AddClaimsPrincipalFactory<ApplicationUserClaimsPrincipalFactory>()
       .AddSignInManager();
 
-    services
+    var authenticationBuilder = services
       .AddAuthentication(options =>
       {
         options.DefaultScheme = IdentityConstants.ApplicationScheme;
         options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
-      })
-      .AddIdentityCookies();
+      });
+    authenticationBuilder.AddIdentityCookies();
+    authenticationBuilder.AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
+      AuthenticationSchemeNames.MacroApiKey, _ => { });
+
+    // Именованные опции — ключ конфигурации привязан к схеме "MacroApiKey", а не к
+    // Options.DefaultName, иначе OptionsMonitor.Get(scheme.Name) внутри хэндлера не увидит значения.
+    services.Configure<ApiKeyAuthenticationOptions>(
+      AuthenticationSchemeNames.MacroApiKey, configuration.GetSection("MacroApi"));
 
     services.AddAuthorizationCore(options =>
     {

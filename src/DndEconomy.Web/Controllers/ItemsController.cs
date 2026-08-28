@@ -8,15 +8,18 @@ using Microsoft.AspNetCore.Mvc;
 namespace DndEconomy.Web.Controllers;
 
 /// <summary>
-/// API для поиска предметов каталога и создания новых предметов админом. Авторизация — те же
-/// cookie Identity, что и у всего сайта: поиск не размечен [Authorize], поэтому подпадает под
-/// общий FallbackPolicy (нужен только логин, как на любой странице каталога), создание —
-/// отдельная политика с ролью Admin, как на странице AdminItemNew. [EnableCors] — доступ с
-/// домена Foundry VTT (см. CorsPolicyNames.FoundryVtt) для макросов.
+/// API для поиска предметов каталога и создания новых предметов — оба эндпоинта только для
+/// макросов Foundry VTT, авторизация схемой MacroApiKey (см. ApiKeyAuthenticationHandler), НЕ
+/// cookie Identity: macros получают статичный ключ, а не логинятся, поэтому не трогают auth-cookie
+/// браузера и не выбивают пользователя из уже открытой вкладки сайта (см. CLAUDE.md). Поиск
+/// принимает ключ игрока или админа, создание — только ключ админа (роль Admin на принципале
+/// от ApiKeyAuthenticationHandler). [EnableCors] — доступ с домена Foundry VTT
+/// (см. CorsPolicyNames.FoundryVtt).
 /// </summary>
 [ApiController]
 [Route("api/items")]
 [EnableCors(CorsPolicyNames.FoundryVtt)]
+[Authorize(AuthenticationSchemes = AuthenticationSchemeNames.MacroApiKey)]
 public sealed class ItemsController : ControllerBase
 {
   #region Поля и конструктор
@@ -73,7 +76,7 @@ public sealed class ItemsController : ControllerBase
     return Ok(results);
   }
 
-  /// <summary>Создаёт новый предмет каталога. Доступно только администраторам.</summary>
+  /// <summary>Создаёт новый предмет каталога. Требует ключ админа (AdminKey).</summary>
   [HttpPost]
   [Authorize(Roles = RoleNames.Admin)]
   public async Task<ActionResult<ItemCreatedResponse>> Create([FromBody] CreateItemRequest request, CancellationToken cancellationToken)

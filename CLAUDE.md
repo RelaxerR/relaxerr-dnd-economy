@@ -110,6 +110,21 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
   `Task.Delay(4000)`), справа внизу. Используется только на уже интерактивных страницах — сам
   компонент требует circuit, добавлять его на статичные `EditForm`-страницы бессмысленно (там уже
   есть инлайн-баннер `status-message--success` после SSR-постбэка).
+- **Макросы Foundry VTT авторизуются статичным API-ключом, не cookie Identity** (2026-08-28,
+  исправлено): раньше `api/auth/login` логинил макрос через `SignInManager` и выставлял ту же
+  auth-cookie, что и обычный вход на сайте (`credentials:'include'` в кросс-сайтовом fetch).
+  Cookie принадлежит браузеру и домену целиком, а не одной вкладке — каждый вызов макроса из
+  вкладки Foundry перезаписывал cookie сайта во ВСЕХ вкладках того же браузера, включая ту, где
+  пользователь был залогинен на сайте под собой — выглядело как "постоянно перелогинивает".
+  Фикс: `ApiKeyAuthenticationHandler` (`DndEconomy.Infrastructure/Identity`) — отдельная схема
+  `AuthenticationSchemeNames.MacroApiKey`, статичный ключ в заголовке `X-Api-Key`, сверяется
+  константным по времени сравнением хэшей (`CryptographicOperations.FixedTimeEquals`), без
+  участия `SignInManager`/cookie. Два ключа в конфиге (секция `MacroApi`, см. `.env.example`):
+  `PlayerKey` (поиск, `api/items/search`) и `AdminKey` (создание предмета, `api/items`, даёт роль
+  Admin на принципале). `api/auth/login` и `AuthController` удалены целиком — CORS-политика
+  `FoundryVtt` (`Program.cs`) больше не требует `AllowCredentials`/`SameSite=None` на cookie
+  Identity (та вернулась к дефолтному `Lax` и в Development, и в Production). Макросы —
+  `foundry-macros/uznat-cenu.js`/`sozdat-predmet.js` — обновлены соответственно (см. их README).
 
 ## Экономическая логика (перенесена из Excel один в один)
 

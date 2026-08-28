@@ -4,37 +4,24 @@
  * Спрашивает название предмета, ищет его через API сайта той же опечатко-устойчивой логикой,
  * что и каталог, и показывает окно с до 5 ближайшими совпадениями (точное название и цена).
  *
- * НАСТРОЙКА: впишите ниже логин/пароль обычного игрока (создать/получить у админа). Эти данные
- * видит любой, кто может редактировать этот макрос — держите его в мире, а не в публичном
- * компендиуме.
+ * НАСТРОЙКА: впишите ниже статичный API-ключ (выдаёт админ — MacroApi:PlayerKey в конфиге
+ * сервера). Это НЕ пароль от личного аккаунта — ключ общий для макроса и не связан с конкретным
+ * игроком. Эти данные видит любой, кто может редактировать этот макрос — держите его в мире,
+ * а не в публичном компендиуме.
  */
 const API_BASE = "https://relaxerr-dnd-economy.ru";
-const LOGIN = {
-  email: "ВАШ_EMAIL_ИГРОКА",
-  password: "ВАШ_ПАРОЛЬ_ИГРОКА"
-};
+const API_KEY = "ВАШ_PLAYER_API_КЛЮЧ";
 const RESULTS_LIMIT = 5;
 
 function formatGp(value) {
   return value === null || value === undefined ? "—" : `${Number(value).toFixed(2)} зм`;
 }
 
-async function loginPlayer() {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(LOGIN)
-  });
-
-  if (res.status === 423) throw new Error("Учётная запись временно заблокирована после серии неудачных попыток входа.");
-  if (!res.ok) throw new Error(`Не удалось войти (HTTP ${res.status}). Проверьте логин/пароль, вписанные в макрос.`);
-}
-
 async function searchItems(name) {
   const url = `${API_BASE}/api/items/search?name=${encodeURIComponent(name)}&take=${RESULTS_LIMIT}`;
-  const res = await fetch(url, { method: "GET", credentials: "include" });
+  const res = await fetch(url, { method: "GET", headers: { "X-Api-Key": API_KEY } });
 
+  if (res.status === 401) throw new Error("Неверный API-ключ, вписанный в макрос.");
   if (!res.ok) throw new Error(`Ошибка поиска (HTTP ${res.status}).`);
   return res.json();
 }
@@ -87,7 +74,6 @@ async function promptForName() {
     const name = await promptForName();
     if (!name) return;
 
-    await loginPlayer();
     const items = await searchItems(name);
 
     if (!items.length) {

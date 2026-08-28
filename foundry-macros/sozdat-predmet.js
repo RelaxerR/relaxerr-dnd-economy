@@ -6,15 +6,13 @@
  * (русская таксономия сайта: "Оружие"/"Рукопашное" и т.п., не совпадает с системными полями
  * Foundry) вводятся вручную в форме подтверждения.
  *
- * НАСТРОЙКА: впишите ниже логин/пароль АДМИНА сайта (только у админа есть право создавать
- * предметы). Эти данные видит любой, кто может редактировать этот макрос — держите его в мире,
- * доступном только ГМ, а не в общем компендиуме.
+ * НАСТРОЙКА: впишите ниже статичный API-ключ админа (MacroApi:AdminKey в конфиге сервера) —
+ * только он даёт право создавать предметы. Это НЕ пароль от аккаунта админа. Эти данные видит
+ * любой, кто может редактировать этот макрос — держите его в мире, доступном только ГМ, а не
+ * в общем компендиуме.
  */
 const API_BASE = "https://relaxerr-dnd-economy.ru";
-const ADMIN_LOGIN = {
-  email: "ВАШ_EMAIL_АДМИНА",
-  password: "ВАШ_ПАРОЛЬ_АДМИНА"
-};
+const ADMIN_API_KEY = "ВАШ_ADMIN_API_КЛЮЧ";
 
 // Курс конвертации в золотые монеты (зм) — стандартный для 5e.
 const DENOMINATION_TO_GP = { pp: 10, gp: 1, ep: 0.5, sp: 0.1, cp: 0.01 };
@@ -30,27 +28,15 @@ function guessWeight(foundryItem) {
   return foundryItem.system?.weight?.value ?? 0;
 }
 
-async function loginAdmin() {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(ADMIN_LOGIN)
-  });
-
-  if (res.status === 423) throw new Error("Учётная запись временно заблокирована после серии неудачных попыток входа.");
-  if (!res.ok) throw new Error(`Не удалось войти админом (HTTP ${res.status}). Проверьте логин/пароль, вписанные в макрос.`);
-}
-
 async function createItem(payload) {
   const res = await fetch(`${API_BASE}/api/items`, {
     method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Api-Key": ADMIN_API_KEY },
     body: JSON.stringify(payload)
   });
 
-  if (res.status === 403) throw new Error("Отказано — учётная запись из макроса не администратор.");
+  if (res.status === 401) throw new Error("Неверный API-ключ, вписанный в макрос.");
+  if (res.status === 403) throw new Error("Отказано — ключ из макроса не даёт роль администратора.");
   if (!res.ok) throw new Error(`Сервер отклонил создание (HTTP ${res.status}): ${await res.text()}`);
   return res.json();
 }
@@ -130,7 +116,6 @@ async function confirmDetails(foundryItem) {
       return;
     }
 
-    await loginAdmin();
     const created = await createItem(payload);
     ui.notifications.info(`Предмет «${payload.nameRu}» создан в экономике сайта (id ${created.itemId}).`);
   } catch (err) {
