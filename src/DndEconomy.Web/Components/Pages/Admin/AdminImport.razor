@@ -19,6 +19,16 @@
 </p>
 
 <section class="auth-card">
+  <p>
+    <a class="btn btn--primary" href="/api/admin/items/export">Скачать текущие предметы (.xlsx)</a>
+  </p>
+  <p class="catalog-meta">
+    Выгружает справочник предметов в том же формате, что и шаблон импорта — файл можно
+    отредактировать и загрузить обратно, не создавая дублей.
+  </p>
+</section>
+
+<section class="auth-card">
   <InputFile OnChange="OnFileSelectedAsync" />
 
   @if (isImporting)
