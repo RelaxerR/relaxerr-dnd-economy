@@ -33,4 +33,12 @@ public interface IExcelEconomyImportService
   /// о нюансах приёма по городам. Города сопоставляются по имени с уже существующими в БД.
   /// </summary>
   Task<EconomyImportSummary> ImportCoinAcceptanceAsync(Stream fileStream, CancellationToken cancellationToken);
+
+  /// <summary>
+  /// Импортирует лист "Оплата заданий" — справочник оплаты заданий (Категория × Опасность ×
+  /// Эпоха). В отличие от остальных листов здесь нет естественного ключа записи (несколько
+  /// заданий одной Категории+Опасности+Эпохи — обычное дело), поэтому загрузка полностью
+  /// заменяет текущее содержимое таблицы содержимым листа, а не обновляет по ключу.
+  /// </summary>
+  Task<EconomyImportSummary> ImportQuestPayRatesAsync(Stream fileStream, CancellationToken cancellationToken);
 }

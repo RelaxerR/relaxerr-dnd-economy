@@ -1,0 +1,308 @@
+@page "/admin/economy/quest-pay"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using DndEconomy.Application.Import
+@using DndEconomy.Application.QuestPay
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Domain.Enums
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IQuestPayRateAdminService QuestPayRateAdminService
+@inject IExcelEconomyImportService ExcelImportService
+@inject IJSRuntime JSRuntime
+@inject ToastService ToastService
+
+<PageTitle>Оплата заданий — админка Relaxerr</PageTitle>
+<ToastContainer />
+
+<h1>Экономические сессии и города</h1>
+<AdminNav />
+<EconomySubNav />
+
+<p class="catalog-meta">
+  Справочник оплаты заданий (Категория × Опасность × Эпоха → оплата партии в зм) — только для
+  мастера при подготовке к сессии, игроки эту страницу не видят. Никак не связан с расчётом
+  цены предметов каталога.
+</p>
+
+<div class="form-field" style="max-width: 20rem;">
+  <label>Фильтр по эпохе</label>
+  <InputSelect @bind-Value="epochFilter">
+    <option value="">Все эпохи</option>
+    @foreach (var epoch in EpochOrder)
+    {
+      <option value="@epoch">@EpochLabel(epoch)</option>
+    }
+  </InputSelect>
+</div>
+
+@if (rates is null)
+{
+  <p>Загрузка...</p>
+}
+else if (rates.Count == 0)
+{
+  <p class="catalog-meta">Заданий пока нет.</p>
+}
+else
+{
+  <div class="admin-table-wrap">
+    <table class="admin-table admin-table--clickable">
+      <thead>
+        <tr>
+          <th>Эпоха</th>
+          <th>Категория</th>
+          <th>Опасность</th>
+          <th>Задание</th>
+          <th>Длительность</th>
+          <th>Оплата партии (зм)</th>
+          <th>Примечание по балансу</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var epochGroup in FilteredRates().GroupBy(x => x.Epoch).OrderBy(g => g.Key))
+        {
+          <tr class="admin-table__group-header">
+            <td colspan="7">Эпоха @EpochLabel(epochGroup.Key)</td>
+          </tr>
+          @foreach (var rate in epochGroup.OrderBy(x => x.Category).ThenBy(x => x.DangerLevel))
+          {
+            <tr @onclick="() => OpenEditModal(rate)">
+              <td>@EpochLabel(rate.Epoch)</td>
+              <td>@rate.Category</td>
+              <td>@DangerLabel(rate.DangerLevel)</td>
+              <td>@rate.Description</td>
+              <td>@rate.Duration</td>
+              <td>@rate.PartyPayment</td>
+              <td>@rate.BalanceNote</td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+<section class="auth-card">
+  <h2>Добавить задание</h2>
+  <EditForm Model="newRate" OnValidSubmit="CreateRateAsync" FormName="new-quest-pay-rate">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="validation-summary" />
+
+    <div class="form-field">
+      <label>Эпоха</label>
+      <InputSelect @bind-Value="newRate.Epoch">
+        @foreach (var epoch in EpochOrder)
+        {
+          <option value="@epoch">@EpochLabel(epoch)</option>
+        }
+      </InputSelect>
+    </div>
+    <div class="form-field"><label>Категория</label><InputText @bind-Value="newRate.Category" /></div>
+    <div class="form-field">
+      <label>Опасность</label>
+      <InputSelect @bind-Value="newRate.DangerLevel">
+        @foreach (var danger in DangerOrder)
+        {
+          <option value="@danger">@DangerLabel(danger)</option>
+        }
+      </InputSelect>
+    </div>
+    <div class="form-field"><label>Задание</label><InputTextArea @bind-Value="newRate.Description" rows="2" /></div>
+    <div class="form-field"><label>Длительность</label><InputText @bind-Value="newRate.Duration" /></div>
+    <div class="form-field"><label>Оплата партии (зм)</label><InputNumber @bind-Value="newRate.PartyPayment" /></div>
+    <div class="form-field"><label>Примечание по балансу</label><InputTextArea @bind-Value="newRate.BalanceNote" rows="2" /></div>
+
+    <button type="submit" class="btn btn--primary">Добавить</button>
+  </EditForm>
+</section>
+
+@if (editingRate is not null)
+{
+  <div class="modal-backdrop" @onclick="CloseEditModal">
+    <div class="modal-card" @onclick:stopPropagation="true">
+      <h2>Редактировать задание</h2>
+      <EditForm Model="editingRate" OnValidSubmit="SaveEditAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="validation-summary" />
+
+        <div class="form-field">
+          <label>Эпоха</label>
+          <InputSelect @bind-Value="editingRate.Epoch">
+            @foreach (var epoch in EpochOrder)
+            {
+              <option value="@epoch">@EpochLabel(epoch)</option>
+            }
+          </InputSelect>
+        </div>
+        <div class="form-field"><label>Категория</label><InputText @bind-Value="editingRate.Category" /></div>
+        <div class="form-field">
+          <label>Опасность</label>
+          <InputSelect @bind-Value="editingRate.DangerLevel">
+            @foreach (var danger in DangerOrder)
+            {
+              <option value="@danger">@DangerLabel(danger)</option>
+            }
+          </InputSelect>
+        </div>
+        <div class="form-field"><label>Задание</label><InputTextArea @bind-Value="editingRate.Description" rows="2" /></div>
+        <div class="form-field"><label>Длительность</label><InputText @bind-Value="editingRate.Duration" /></div>
+        <div class="form-field"><label>Оплата партии (зм)</label><InputNumber @bind-Value="editingRate.PartyPayment" /></div>
+        <div class="form-field"><label>Примечание по балансу</label><InputTextArea @bind-Value="editingRate.BalanceNote" rows="2" /></div>
+
+        <div class="modal-card__actions">
+          <button type="submit" class="btn btn--primary">Сохранить</button>
+          <button type="button" class="btn" @onclick="CloseEditModal">Отмена</button>
+          <button type="button" class="btn modal-card__delete" @onclick="DeleteEditingRateAsync">Удалить</button>
+        </div>
+      </EditForm>
+    </div>
+  </div>
+}
+
+<ExcelSheetPanel Title="Оплата заданий" SheetName="Оплата заданий" ExportUrl="/api/admin/economy/quest-pay/export"
+                 ImportFunc="ExcelImportService.ImportQuestPayRatesAsync" OnImported="ReloadAsync" />
+
+@code {
+  private static readonly QuestEpoch[] EpochOrder = [QuestEpoch.I, QuestEpoch.II, QuestEpoch.III, QuestEpoch.IV];
+
+  private static readonly QuestDangerLevel[] DangerOrder =
+    [QuestDangerLevel.Trivial, QuestDangerLevel.Easy, QuestDangerLevel.Standard, QuestDangerLevel.Dangerous, QuestDangerLevel.Deadly];
+
+  private IReadOnlyList<QuestPayRateSummary>? rates;
+  private string epochFilter = "";
+  private NewRateModel newRate = new();
+
+  private Guid? editingRateId;
+  private EditRateModel? editingRate;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    rates = await QuestPayRateAdminService.GetAllAsync(CancellationToken.None);
+  }
+
+  private IEnumerable<QuestPayRateSummary> FilteredRates()
+    => string.IsNullOrEmpty(epochFilter) || !Enum.TryParse<QuestEpoch>(epochFilter, out var epoch)
+      ? rates!
+      : rates!.Where(x => x.Epoch == epoch);
+
+  private async Task CreateRateAsync()
+  {
+    await QuestPayRateAdminService.CreateAsync(new NewQuestPayRateInput
+    {
+      Epoch = newRate.Epoch,
+      Category = newRate.Category,
+      DangerLevel = newRate.DangerLevel,
+      Description = newRate.Description,
+      Duration = newRate.Duration,
+      PartyPayment = newRate.PartyPayment,
+      BalanceNote = newRate.BalanceNote
+    }, CancellationToken.None);
+
+    newRate = new();
+    await ReloadAsync();
+    ToastService.ShowSuccess("Задание добавлено");
+  }
+
+  private void OpenEditModal(QuestPayRateSummary rate)
+  {
+    editingRateId = rate.Id;
+    editingRate = new EditRateModel
+    {
+      Epoch = rate.Epoch,
+      Category = rate.Category,
+      DangerLevel = rate.DangerLevel,
+      Description = rate.Description,
+      Duration = rate.Duration,
+      PartyPayment = rate.PartyPayment,
+      BalanceNote = rate.BalanceNote
+    };
+  }
+
+  private void CloseEditModal()
+  {
+    editingRateId = null;
+    editingRate = null;
+  }
+
+  private async Task SaveEditAsync()
+  {
+    if (editingRateId is null || editingRate is null)
+      return;
+
+    await QuestPayRateAdminService.UpdateAsync(editingRateId.Value, new NewQuestPayRateInput
+    {
+      Epoch = editingRate.Epoch,
+      Category = editingRate.Category,
+      DangerLevel = editingRate.DangerLevel,
+      Description = editingRate.Description,
+      Duration = editingRate.Duration,
+      PartyPayment = editingRate.PartyPayment,
+      BalanceNote = editingRate.BalanceNote
+    }, CancellationToken.None);
+
+    CloseEditModal();
+    await ReloadAsync();
+    ToastService.ShowSuccess("Задание обновлено");
+  }
+
+  private async Task DeleteEditingRateAsync()
+  {
+    if (editingRateId is null)
+      return;
+
+    var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Удалить это задание безвозвратно?");
+    if (!confirmed)
+      return;
+
+    await QuestPayRateAdminService.DeleteAsync(editingRateId.Value, CancellationToken.None);
+    CloseEditModal();
+    await ReloadAsync();
+    ToastService.ShowSuccess("Задание удалено");
+  }
+
+  private static string EpochLabel(QuestEpoch epoch) => epoch switch
+  {
+    QuestEpoch.I => "I (1-4 ур.)",
+    QuestEpoch.II => "II (5-10 ур.)",
+    QuestEpoch.III => "III (11-16 ур.)",
+    QuestEpoch.IV => "IV (17-20 ур.)",
+    _ => epoch.ToString()
+  };
+
+  private static string DangerLabel(QuestDangerLevel level) => level switch
+  {
+    QuestDangerLevel.Trivial => "Тривиальная",
+    QuestDangerLevel.Easy => "Лёгкая",
+    QuestDangerLevel.Standard => "Стандартная",
+    QuestDangerLevel.Dangerous => "Опасная",
+    QuestDangerLevel.Deadly => "Смертельная",
+    _ => level.ToString()
+  };
+
+  private sealed class NewRateModel
+  {
+    public QuestEpoch Epoch { get; set; } = QuestEpoch.I;
+    [Required] public string Category { get; set; } = "";
+    public QuestDangerLevel DangerLevel { get; set; } = QuestDangerLevel.Standard;
+    [Required] public string Description { get; set; } = "";
+    public string Duration { get; set; } = "";
+    public int PartyPayment { get; set; }
+    public string BalanceNote { get; set; } = "";
+  }
+
+  private sealed class EditRateModel
+  {
+    public QuestEpoch Epoch { get; set; }
+    [Required] public string Category { get; set; } = "";
+    public QuestDangerLevel DangerLevel { get; set; }
+    [Required] public string Description { get; set; } = "";
+    public string Duration { get; set; } = "";
+    public int PartyPayment { get; set; }
+    public string BalanceNote { get; set; } = "";
+  }
+}

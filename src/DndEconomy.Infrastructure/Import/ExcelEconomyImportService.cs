@@ -29,6 +29,7 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   private const string SeasonsSheetName = "Сезонность";
   private const string SettingsSheetName = "Настройки";
   private const string CoinAcceptanceSheetName = "Приём монет";
+  private const string QuestPayRatesSheetName = "Оплата заданий";
 
   // Формат названия в исходнике: "Русское название [English Name]" — English опционален.
   [GeneratedRegex(@"^(?<ru>.+?)\s*(\[(?<en>.+)\])?$")]
@@ -51,6 +52,23 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
   private static readonly Dictionary<string, CoinDenomination> DenominationLabels =
     CoinDenominations.All.ToDictionary(x => x.DisplayName, x => x.Denomination);
+
+  private static readonly Dictionary<string, QuestEpoch> QuestEpochLabels = new()
+  {
+    ["I"] = QuestEpoch.I,
+    ["II"] = QuestEpoch.II,
+    ["III"] = QuestEpoch.III,
+    ["IV"] = QuestEpoch.IV
+  };
+
+  private static readonly Dictionary<string, QuestDangerLevel> QuestDangerLevelLabels = new()
+  {
+    ["Тривиальная"] = QuestDangerLevel.Trivial,
+    ["Лёгкая"] = QuestDangerLevel.Easy,
+    ["Стандартная"] = QuestDangerLevel.Standard,
+    ["Опасная"] = QuestDangerLevel.Dangerous,
+    ["Смертельная"] = QuestDangerLevel.Deadly
+  };
 
   private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
   private readonly ILogger<ExcelEconomyImportService> _logger;
@@ -161,6 +179,25 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     await ImportCoinAcceptanceRowsAsync(dbContext, sheet, citiesByName, summary, cancellationToken);
 
     _logger.LogInformation("Импортирован лист «{Sheet}»: приём монет {Count}", CoinAcceptanceSheetName, summary.CoinAcceptancesImported);
+    return summary;
+  }
+
+  /// <inheritdoc />
+  public async Task<EconomyImportSummary> ImportQuestPayRatesAsync(Stream fileStream, CancellationToken cancellationToken)
+  {
+    var summary = new EconomyImportSummary();
+    using var workbook = OpenWorkbook(fileStream);
+
+    if (!workbook.Worksheets.TryGetWorksheet(QuestPayRatesSheetName, out var sheet))
+    {
+      summary.Warnings.Add($"В файле не найден лист «{QuestPayRatesSheetName}» — ничего не импортировано.");
+      return summary;
+    }
+
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    await ImportQuestPayRatesAsync(dbContext, sheet, summary, cancellationToken);
+
+    _logger.LogInformation("Импортирован лист «{Sheet}»: заданий {Count}", QuestPayRatesSheetName, summary.QuestPayRatesImported);
     return summary;
   }
 
@@ -596,6 +633,57 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
       }
     }
 
+    await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  #endregion
+
+  #region Импорт листа "Оплата заданий"
+
+  /// <summary>
+  /// Импортирует справочник оплаты заданий. В отличие от остальных листов у строк нет
+  /// естественного ключа (несколько заданий одной Категории+Опасности+Эпохи — обычное дело,
+  /// это не матрица коэффициентов), поэтому загрузка полностью заменяет текущее содержимое
+  /// таблицы содержимым листа, а не обновляет по ключу.
+  /// </summary>
+  private static async Task ImportQuestPayRatesAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, EconomyImportSummary summary, CancellationToken cancellationToken)
+  {
+    var newRates = new List<QuestPayRate>();
+
+    foreach (var row in sheet.RowsUsed().Skip(1))
+    {
+      var epochLabel = row.Cell(1).GetString().Trim();
+      var category = row.Cell(2).GetString();
+      var dangerLabel = row.Cell(3).GetString().Trim();
+
+      if (string.IsNullOrWhiteSpace(category) || !QuestEpochLabels.TryGetValue(epochLabel, out var epoch))
+      {
+        continue;
+      }
+
+      if (!QuestDangerLevelLabels.TryGetValue(dangerLabel, out var dangerLevel))
+      {
+        summary.Warnings.Add($"Задание «{category}» пропущено — не распознан уровень опасности «{dangerLabel}».");
+        continue;
+      }
+
+      newRates.Add(new QuestPayRate
+      {
+        Epoch = epoch,
+        Category = category,
+        DangerLevel = dangerLevel,
+        Description = row.Cell(4).GetString(),
+        Duration = row.Cell(5).GetString(),
+        PartyPayment = row.Cell(6).GetValue<int>(),
+        BalanceNote = row.Cell(7).GetString()
+      });
+
+      summary.QuestPayRatesImported++;
+    }
+
+    var existingRates = await dbContext.QuestPayRates.ToListAsync(cancellationToken);
+    dbContext.QuestPayRates.RemoveRange(existingRates);
+    dbContext.QuestPayRates.AddRange(newRates);
     await dbContext.SaveChangesAsync(cancellationToken);
   }
 

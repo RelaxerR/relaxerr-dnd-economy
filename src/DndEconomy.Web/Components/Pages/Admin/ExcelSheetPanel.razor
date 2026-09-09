@@ -102,6 +102,7 @@
     if (s.SeasonModifiersImported > 0) parts.Add($"коэф. сезона: {s.SeasonModifiersImported}");
     if (s.SessionsImported > 0) parts.Add($"сессий: {s.SessionsImported}");
     if (s.CoinAcceptancesImported > 0) parts.Add($"приём монет: {s.CoinAcceptancesImported}");
+    if (s.QuestPayRatesImported > 0) parts.Add($"заданий: {s.QuestPayRatesImported}");
 
     return parts.Count > 0
       ? $"Импортировано — {string.Join(", ", parts)}."

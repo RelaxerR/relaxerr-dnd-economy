@@ -26,6 +26,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
   public DbSet<UserSavedItem> UserSavedItems => Set<UserSavedItem>();
   public DbSet<ItemRequest> ItemRequests => Set<ItemRequest>();
   public DbSet<Notification> Notifications => Set<Notification>();
+  public DbSet<QuestPayRate> QuestPayRates => Set<QuestPayRate>();
 
   #endregion
 
