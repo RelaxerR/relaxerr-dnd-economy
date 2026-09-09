@@ -2,10 +2,12 @@
 @rendermode InteractiveServer
 @using System.Globalization
 @using DndEconomy.Application.Economy
+@using DndEconomy.Application.Import
 @using DndEconomy.Domain.Constants
 @using DndEconomy.Domain.Enums
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IEconomyAdminService EconomyAdminService
+@inject IExcelEconomyImportService ExcelImportService
 @inject ToastService ToastService
 
 <PageTitle>Приём номиналов — админка Relaxerr</PageTitle>
@@ -84,6 +86,9 @@ else
     }
   </section>
 }
+
+<ExcelSheetPanel Title="Приём монет" SheetName="Приём монет" ExportUrl="/api/admin/economy/coin-acceptance/export"
+                 ImportFunc="ExcelImportService.ImportCoinAcceptanceAsync" OnImported="ReloadAsync" />
 
 @code {
   private CoinAcceptanceMatrix? matrix;

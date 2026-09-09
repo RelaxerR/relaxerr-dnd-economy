@@ -59,13 +59,6 @@ public sealed record NewEconomySessionInput
   public required decimal SellCoefficient { get; init; }
 }
 
-/// <summary>Пара Тип+Подтип, как она заведена у предметов каталога — ключ для строки матрицы коэффициентов.</summary>
-public sealed record TypeSubtype
-{
-  public required string Type { get; init; }
-  public required string Subtype { get; init; }
-}
-
 /// <summary>Одна строка матрицы "Тип+Подтип × Город" — коэффициент по каждому городу, где он задан явно.</summary>
 public sealed record CityModifierMatrixRow
 {
@@ -82,6 +75,15 @@ public sealed record CityModifierMatrixRow
   /// оказывается" — НЕ коэффициент 1, в отличие от обычных товарных строк (см. AdminCityModifiers.razor).
   /// </summary>
   public required bool IsService { get; init; }
+
+  /// <summary>
+  /// True, если у этой пары Тип+Подтип в БД есть коэффициенты, но среди текущих предметов
+  /// каталога такой пары больше нет (все предметы этой категории удалены/переименованы).
+  /// Такие строки — единственные, для которых в интерфейсе доступно удаление целиком:
+  /// строки, подтверждённые реальным предметом, переприходят в матрицу автоматически при
+  /// каждой загрузке и удалить их нельзя, только сбросить значения ячеек.
+  /// </summary>
+  public required bool IsOrphan { get; init; }
 }
 
 /// <summary>Полная матрица коэффициентов по городам для редактора в админке.</summary>
@@ -99,4 +101,7 @@ public sealed record SeasonModifierMatrixRow
 
   /// <summary>Коэффициент по сезону. Отсутствие ключа = коэффициент 1 (без изменений).</summary>
   public required IReadOnlyDictionary<Season, decimal> CoefficientsBySeason { get; init; }
+
+  /// <summary>См. <see cref="CityModifierMatrixRow.IsOrphan"/> — тот же смысл, для матрицы сезонов.</summary>
+  public required bool IsOrphan { get; init; }
 }

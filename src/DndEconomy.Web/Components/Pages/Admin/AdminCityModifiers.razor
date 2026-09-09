@@ -1,13 +1,12 @@
 @page "/admin/economy/city-modifiers"
 @rendermode InteractiveServer
-@using System.ComponentModel.DataAnnotations
 @using System.Globalization
-@using DndEconomy.Application.Catalog
 @using DndEconomy.Application.Economy
+@using DndEconomy.Application.Import
 @using DndEconomy.Domain.Constants
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IEconomyAdminService EconomyAdminService
-@inject ICatalogReadStore CatalogReadStore
+@inject IExcelEconomyImportService ExcelImportService
 @inject IJSRuntime JSRuntime
 @inject ToastService ToastService
 
@@ -20,20 +19,15 @@
 
 <p class="catalog-meta">
   Коэффициент — множитель к базовой стоимости товаров с этим Типом+Подтипом в этом городе;
-  0 означает «не продаётся» (в каталоге — «Нет в наличии»). Пустых ячеек в таблице нет —
-  всё, что не заведено явно, и так уже считается коэффициентом 1 (без изменений). Тип и
-  Подтип должны в точности совпадать с указанными у предмета на странице «Новый предмет» —
-  иначе коэффициент ни к одному товару не применится. То же самое можно загрузить файлом
-  на странице «Импорт Excel» (лист «Города», шаблон — <code>economy-cities.xlsx</code>).
-  Строки, помечённые бейджем «услуга» (например, «Обмен валют»), — исключение из этого
-  правила: коэффициент там — доля суммы после комиссии, а не наценка/скидка, и пустая ячейка
-  означает «услуга в этом городе не оказывается», а не коэффициент 1.
+  0 означает «не продаётся» (в каталоге — «Нет в наличии»). Строки — все категории (Тип+Подтип),
+  которые реально встречаются у предметов каталога, подставляются сюда автоматически, заводить
+  их вручную не нужно. Пустых ячеек в таблице нет — всё, что не заведено явно, и так уже
+  считается коэффициентом 1 (без изменений). Строки, помеченные «не используется предметами»,
+  — коэффициенты, оставшиеся от категории, которой больше нет ни у одного предмета; их можно
+  удалить, чтобы не путались. Строки, помеченные бейджем «услуга» (например, «Обмен валют»), —
+  исключение из общего правила: коэффициент там — доля суммы после комиссии, а не наценка/скидка,
+  и пустая ячейка означает «услуга в этом городе не оказывается», а не коэффициент 1.
 </p>
-
-@if (error is not null)
-{
-  <div class="status-message status-message--error">@error</div>
-}
 
 @if (matrix is null)
 {
@@ -61,7 +55,7 @@ else
       <tbody>
         @if (matrix.Rows.Count == 0)
         {
-          <tr><td colspan="@(matrix.Cities.Count + 3)" class="catalog-meta">Коэффициентов пока нет — добавьте первую строку ниже.</td></tr>
+          <tr><td colspan="@(matrix.Cities.Count + 3)" class="catalog-meta">Сначала добавьте хотя бы один предмет в каталог — категории появятся здесь автоматически.</td></tr>
         }
         @foreach (var row in matrix.Rows)
         {
@@ -71,6 +65,10 @@ else
               @if (row.IsService)
               {
                 <span class="badge badge--player-suggested" title="Для услуг коэффициент — это доля от суммы, которую вернут игроку после комиссии (0.93 = комиссия 7%), а не наценка/скидка к цене товара. Отсутствие ячейки для города означает «услуга здесь не оказывается», а НЕ коэффициент 1.">услуга</span>
+              }
+              @if (row.IsOrphan)
+              {
+                <span class="badge" title="Предметов с этим Типом+Подтипом в каталоге больше нет — коэффициенты остались от удалённой/переименованной категории.">не используется предметами</span>
               }
             </td>
             <td>@row.Subtype</td>
@@ -87,7 +85,10 @@ else
               </td>
             }
             <td>
-              <button type="button" class="btn admin-matrix-table__delete" @onclick="() => DeleteRowAsync(row.Type, row.Subtype)">Удалить</button>
+              @if (row.IsOrphan)
+              {
+                <button type="button" class="btn admin-matrix-table__delete" @onclick="() => DeleteRowAsync(row.Type, row.Subtype)">Удалить</button>
+              }
             </td>
           </tr>
         }
@@ -96,41 +97,14 @@ else
   </div>
 }
 
-<section class="auth-card">
-  <h2>Добавить строку (Тип + Подтип)</h2>
-  <EditForm Model="newRow" OnValidSubmit="AddRowAsync">
-    <DataAnnotationsValidator />
-    <ValidationSummary class="validation-summary" />
-    <div class="form-field"><label>Тип</label><InputText @bind-Value="newRow.Type" list="city-mod-type-options" /></div>
-    <div class="form-field"><label>Подтип</label><InputText @bind-Value="newRow.Subtype" list="city-mod-subtype-options" /></div>
-    <button type="submit" class="btn btn--primary">Добавить строку</button>
-  </EditForm>
-</section>
-
-<datalist id="city-mod-type-options">
-  @foreach (var type in types)
-  {
-    <option value="@type" />
-  }
-</datalist>
-<datalist id="city-mod-subtype-options">
-  @foreach (var subtype in subtypes)
-  {
-    <option value="@subtype" />
-  }
-</datalist>
+<ExcelSheetPanel Title="Города" SheetName="Города" ExportUrl="/api/admin/economy/cities/export"
+                 ImportFunc="ExcelImportService.ImportCitiesAsync" OnImported="ReloadAsync" />
 
 @code {
   private CityModifierMatrix? matrix;
-  private IReadOnlyList<string> types = [];
-  private IReadOnlyList<string> subtypes = [];
-  private NewRowModel newRow = new();
-  private string? error;
 
   protected override async Task OnInitializedAsync()
   {
-    types = await CatalogReadStore.GetDistinctTypesAsync(null, CancellationToken.None);
-    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
     await ReloadAsync();
   }
 
@@ -149,29 +123,6 @@ else
     ToastService.ShowSuccess("Коэффициент обновлён");
   }
 
-  private async Task AddRowAsync()
-  {
-    error = null;
-
-    if (matrix is null || matrix.Cities.Count == 0)
-      return;
-
-    if (matrix.Rows.Any(r => r.Type == newRow.Type && r.Subtype == newRow.Subtype))
-    {
-      error = $"Строка «{newRow.Type} / {newRow.Subtype}» уже есть — отредактируйте коэффициенты прямо в таблице.";
-      return;
-    }
-
-    foreach (var city in matrix.Cities)
-    {
-      await EconomyAdminService.SetCityModifierAsync(newRow.Type, newRow.Subtype, city.Id, 1m, CancellationToken.None);
-    }
-
-    newRow = new();
-    await ReloadAsync();
-    ToastService.ShowSuccess("Строка добавлена");
-  }
-
   private async Task DeleteRowAsync(string type, string subtype)
   {
     var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Удалить коэффициенты «{type} / {subtype}» для всех городов?");
@@ -181,11 +132,5 @@ else
     await EconomyAdminService.DeleteCityModifierRowAsync(type, subtype, CancellationToken.None);
     await ReloadAsync();
     ToastService.ShowSuccess("Строка удалена");
-  }
-
-  private sealed class NewRowModel
-  {
-    [Required] public string Type { get; set; } = "";
-    [Required] public string Subtype { get; set; } = "";
   }
 }

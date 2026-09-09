@@ -1,12 +1,17 @@
 @page "/admin/economy/cities"
+@rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using DndEconomy.Application.Economy
+@using DndEconomy.Application.Import
 @using DndEconomy.Domain.Constants
 @using DndEconomy.Domain.Enums
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IEconomyAdminService EconomyAdminService
+@inject IExcelEconomyImportService ExcelImportService
+@inject ToastService ToastService
 
 <PageTitle>Города — админка Relaxerr</PageTitle>
+<ToastContainer />
 
 <h1>Экономические сессии и города</h1>
 <AdminNav />
@@ -49,7 +54,7 @@
 
   <section class="auth-card">
     <h2>Добавить город</h2>
-    <EditForm Model="newCity" OnValidSubmit="CreateCityAsync" FormName="new-city">
+    <EditForm Model="newCity" OnValidSubmit="CreateCityAsync">
       <DataAnnotationsValidator />
       <ValidationSummary class="validation-summary" />
 
@@ -67,15 +72,15 @@
   </section>
 </div>
 
+<ExcelSheetPanel Title="Города" SheetName="Города" ExportUrl="/api/admin/economy/cities/export"
+                 ImportFunc="ExcelImportService.ImportCitiesAsync" OnImported="ReloadAsync" />
+
 @code {
   private IReadOnlyList<CitySummary>? cities;
-
-  [SupplyParameterFromForm(FormName = "new-city")]
-  private NewCityModel newCity { get; set; } = default!;
+  private NewCityModel newCity = new();
 
   protected override async Task OnInitializedAsync()
   {
-    newCity ??= new();
     await ReloadAsync();
   }
 
@@ -89,6 +94,7 @@
     await EconomyAdminService.CreateCityAsync(newCity.Name, newCity.Size, CancellationToken.None);
     newCity = new();
     await ReloadAsync();
+    ToastService.ShowSuccess("Город добавлен");
   }
 
   private static string SizeLabel(CitySize size) => size switch

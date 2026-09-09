@@ -9,6 +9,20 @@ public interface IItemAdminService
   Task<Guid> CreateItemAsync(NewItemInput input, CancellationToken cancellationToken);
 
   /// <summary>
+  /// Ищет предметы для вкладки "Предметы" в админке — постранично, с опечатко-устойчивым
+  /// поиском по названию (тот же порог, что и в каталоге, см. CatalogReadStore.WordSimilarityThreshold).
+  /// Не считает цену — та зависит от активной экономической сессии, здесь речь только о
+  /// редактировании сырых полей предмета.
+  /// </summary>
+  Task<ItemAdminPage> SearchItemsAsync(ItemAdminQuery query, CancellationToken cancellationToken);
+
+  /// <summary>Обновляет поля существующего предмета.</summary>
+  Task UpdateItemAsync(Guid itemId, UpdateItemInput input, CancellationToken cancellationToken);
+
+  /// <summary>Удаляет предмет безвозвратно (избранное игроков и ссылки из заявок отвязываются каскадно на уровне схемы БД).</summary>
+  Task DeleteItemAsync(Guid itemId, CancellationToken cancellationToken);
+
+  /// <summary>
   /// Считает предметы, попадающие под <paramref name="input"/>.Filter, и стоимость, которая
   /// получится после применения операции — ничего не сохраняет. Для предпросмотра перед
   /// необратимым массовым изменением.

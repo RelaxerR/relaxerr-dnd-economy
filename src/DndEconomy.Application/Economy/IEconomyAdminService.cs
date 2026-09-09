@@ -35,9 +35,6 @@ public interface IEconomyAdminService
 
   #region Коэффициенты города/сезона
 
-  /// <summary>Различные пары Тип+Подтип, встречающиеся у предметов каталога — подсказки для формы добавления строки.</summary>
-  Task<IReadOnlyList<TypeSubtype>> GetItemTypeSubtypesAsync(CancellationToken cancellationToken);
-
   /// <summary>Полная матрица коэффициентов "Тип+Подтип × Город" для редактора в админке.</summary>
   Task<CityModifierMatrix> GetCityModifierMatrixAsync(CancellationToken cancellationToken);
 

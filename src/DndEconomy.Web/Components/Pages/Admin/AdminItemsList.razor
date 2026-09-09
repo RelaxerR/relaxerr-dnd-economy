@@ -1,0 +1,306 @@
+@page "/admin/items"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using DndEconomy.Application.Catalog
+@using DndEconomy.Application.Import
+@using DndEconomy.Application.Items
+@using DndEconomy.Domain.Constants
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IItemAdminService ItemAdminService
+@inject ICatalogReadStore CatalogReadStore
+@inject IExcelEconomyImportService ExcelImportService
+@inject IJSRuntime JSRuntime
+@inject ToastService ToastService
+
+<PageTitle>Предметы — админка Relaxerr</PageTitle>
+<ToastContainer />
+
+<h1>Предметы</h1>
+<AdminNav />
+
+<div class="catalog-toolbar">
+  <input type="search" placeholder="Поиск по названию..." value="@searchTerm" @oninput="OnSearchInput" />
+</div>
+
+@if (resultPage is null)
+{
+  <p>Загрузка...</p>
+}
+else if (resultPage.TotalCount == 0)
+{
+  <p class="catalog-meta">Ничего не найдено.</p>
+}
+else
+{
+  <p class="catalog-meta">Найдено предметов: @resultPage.TotalCount</p>
+
+  <div class="admin-table-wrap">
+    <table class="admin-table admin-table--clickable">
+      <thead>
+        <tr>
+          <th>Категория</th>
+          <th>Тип</th>
+          <th>Подтип</th>
+          <th>Название</th>
+          <th>Стоимость</th>
+          <th>Вес</th>
+          <th>UUID</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var item in resultPage.Items)
+        {
+          <tr @onclick="() => OpenEditModal(item)">
+            <td>@item.Category</td>
+            <td>@item.Type</td>
+            <td>@item.Subtype</td>
+            <td>
+              @item.NameRu
+              @if (!string.IsNullOrWhiteSpace(item.NameEn))
+              {
+                <span class="catalog-meta">[@item.NameEn]</span>
+              }
+              @if (item.IsService)
+              {
+                <span class="badge badge--player-suggested">услуга</span>
+              }
+              @if (item.IsPlayerSuggested)
+              {
+                <span class="badge badge--player-suggested">от игрока</span>
+              }
+            </td>
+            <td>@item.BaseCost</td>
+            <td>@item.Weight</td>
+            <td>@item.ExternalUuid</td>
+            <td>
+              <button type="button" class="btn admin-matrix-table__delete" @onclick="() => DeleteItemAsync(item)" @onclick:stopPropagation="true">Удалить</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="catalog-pagination">
+    <button disabled="@(pageNumber <= 1)" @onclick="() => ChangePageAsync(pageNumber - 1)">← Назад</button>
+    <span>Стр. @pageNumber из @Math.Max(1, (int)Math.Ceiling(resultPage.TotalCount / (double)PageSize))</span>
+    <button disabled="@(pageNumber * PageSize >= resultPage.TotalCount)" @onclick="() => ChangePageAsync(pageNumber + 1)">Дальше →</button>
+  </div>
+}
+
+@if (editingItem is not null)
+{
+  <div class="modal-backdrop" @onclick="CloseEditModal">
+    <div class="modal-card" @onclick:stopPropagation="true">
+      <h2>Редактировать предмет</h2>
+      <EditForm Model="editingItem" OnValidSubmit="SaveEditAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="validation-summary" />
+
+        <div class="form-field"><label>Категория</label><InputText @bind-Value="editingItem.Category" list="admin-items-category-options" /></div>
+        <div class="form-field"><label>Тип</label><InputText @bind-Value="editingItem.Type" list="admin-items-type-options" /></div>
+        <div class="form-field"><label>Подтип</label><InputText @bind-Value="editingItem.Subtype" list="admin-items-subtype-options" /></div>
+        <div class="form-field"><label>Название (рус.)</label><InputText @bind-Value="editingItem.NameRu" /></div>
+        <div class="form-field"><label>Название (англ., опц.)</label><InputText @bind-Value="editingItem.NameEn" /></div>
+        <div class="form-field">
+          <label>Базовая стоимость <span class="input-hint">(в золотых монетах, зм)</span></label>
+          <InputNumber @bind-Value="editingItem.BaseCost" />
+        </div>
+        <div class="form-field"><label>Вес</label><InputNumber @bind-Value="editingItem.Weight" /></div>
+        <div class="form-field">
+          <label><InputCheckbox @bind-Value="editingItem.IsService" /> Это услуга, а не физический товар</label>
+        </div>
+        <div class="form-field">
+          <label><InputCheckbox @bind-Value="editingItem.IsPlayerSuggested" /> Добавлено из заявки игрока</label>
+        </div>
+
+        <div class="modal-card__actions">
+          <button type="submit" class="btn btn--primary">Сохранить</button>
+          <button type="button" class="btn" @onclick="CloseEditModal">Отмена</button>
+          <button type="button" class="btn modal-card__delete" @onclick="DeleteEditingItemAsync">Удалить предмет</button>
+        </div>
+      </EditForm>
+    </div>
+  </div>
+}
+
+<datalist id="admin-items-category-options">
+  @foreach (var category in categories)
+  {
+    <option value="@category" />
+  }
+</datalist>
+<datalist id="admin-items-type-options">
+  @foreach (var type in types)
+  {
+    <option value="@type" />
+  }
+</datalist>
+<datalist id="admin-items-subtype-options">
+  @foreach (var subtype in subtypes)
+  {
+    <option value="@subtype" />
+  }
+</datalist>
+
+<ExcelSheetPanel Title="Предметы" SheetName="Предметы" ExportUrl="/api/admin/items/export"
+                 ImportFunc="ExcelImportService.ImportItemsAsync" OnImported="LoadPageAsync" />
+
+@code {
+  private const int PageSize = 20;
+  private const int SearchDebounceMilliseconds = 300;
+
+  private ItemAdminPage? resultPage;
+  private IReadOnlyList<string> categories = [];
+  private IReadOnlyList<string> types = [];
+  private IReadOnlyList<string> subtypes = [];
+
+  private string searchTerm = "";
+  private int pageNumber = 1;
+  private CancellationTokenSource? searchDebounceCts;
+
+  private Guid? editingItemId;
+  private EditItemModel? editingItem;
+
+  protected override async Task OnInitializedAsync()
+  {
+    categories = await CatalogReadStore.GetDistinctCategoriesAsync(CancellationToken.None);
+    types = await CatalogReadStore.GetDistinctTypesAsync(null, CancellationToken.None);
+    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
+    await LoadPageAsync();
+  }
+
+  private void OnSearchInput(ChangeEventArgs e)
+  {
+    searchTerm = e.Value?.ToString() ?? "";
+
+    searchDebounceCts?.Cancel();
+    var cts = new CancellationTokenSource();
+    searchDebounceCts = cts;
+
+    _ = DebounceSearchAsync(cts.Token);
+  }
+
+  private async Task DebounceSearchAsync(CancellationToken token)
+  {
+    try
+    {
+      await Task.Delay(SearchDebounceMilliseconds, token);
+    }
+    catch (TaskCanceledException)
+    {
+      return;
+    }
+
+    if (token.IsCancellationRequested)
+      return;
+
+    pageNumber = 1;
+    await LoadPageAsync();
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private Task ChangePageAsync(int newPageNumber)
+  {
+    pageNumber = newPageNumber;
+    return LoadPageAsync();
+  }
+
+  private async Task LoadPageAsync()
+  {
+    var query = new ItemAdminQuery
+    {
+      SearchTerm = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm,
+      PageNumber = pageNumber,
+      PageSize = PageSize
+    };
+
+    resultPage = await ItemAdminService.SearchItemsAsync(query, CancellationToken.None);
+  }
+
+  private void OpenEditModal(ItemAdminRow item)
+  {
+    editingItemId = item.ItemId;
+    editingItem = new EditItemModel
+    {
+      Category = item.Category,
+      Type = item.Type,
+      Subtype = item.Subtype,
+      NameRu = item.NameRu,
+      NameEn = item.NameEn,
+      BaseCost = item.BaseCost,
+      Weight = item.Weight,
+      IsService = item.IsService,
+      IsPlayerSuggested = item.IsPlayerSuggested
+    };
+  }
+
+  private void CloseEditModal()
+  {
+    editingItemId = null;
+    editingItem = null;
+  }
+
+  private async Task SaveEditAsync()
+  {
+    if (editingItemId is null || editingItem is null)
+      return;
+
+    await ItemAdminService.UpdateItemAsync(editingItemId.Value, new UpdateItemInput
+    {
+      Category = editingItem.Category,
+      Type = editingItem.Type,
+      Subtype = editingItem.Subtype,
+      NameRu = editingItem.NameRu,
+      NameEn = string.IsNullOrWhiteSpace(editingItem.NameEn) ? null : editingItem.NameEn,
+      BaseCost = editingItem.BaseCost,
+      Weight = editingItem.Weight,
+      IsService = editingItem.IsService,
+      IsPlayerSuggested = editingItem.IsPlayerSuggested
+    }, CancellationToken.None);
+
+    CloseEditModal();
+    await LoadPageAsync();
+    ToastService.ShowSuccess("Предмет обновлён");
+  }
+
+  private async Task DeleteEditingItemAsync()
+  {
+    if (editingItemId is null)
+      return;
+
+    var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Удалить этот предмет безвозвратно?");
+    if (!confirmed)
+      return;
+
+    await ItemAdminService.DeleteItemAsync(editingItemId.Value, CancellationToken.None);
+    CloseEditModal();
+    await LoadPageAsync();
+    ToastService.ShowSuccess("Предмет удалён");
+  }
+
+  private async Task DeleteItemAsync(ItemAdminRow item)
+  {
+    var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Удалить предмет «{item.NameRu}» безвозвратно?");
+    if (!confirmed)
+      return;
+
+    await ItemAdminService.DeleteItemAsync(item.ItemId, CancellationToken.None);
+    await LoadPageAsync();
+    ToastService.ShowSuccess("Предмет удалён");
+  }
+
+  private sealed class EditItemModel
+  {
+    [Required] public string Category { get; set; } = "";
+    [Required] public string Type { get; set; } = "";
+    [Required] public string Subtype { get; set; } = "";
+    [Required] public string NameRu { get; set; } = "";
+    public string? NameEn { get; set; }
+    public decimal BaseCost { get; set; }
+    public decimal Weight { get; set; }
+    public bool IsService { get; set; }
+    public bool IsPlayerSuggested { get; set; }
+  }
+}
