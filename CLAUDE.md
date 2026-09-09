@@ -193,21 +193,32 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
   безопасно на уровне схемы БД без ручной зачистки: `UserSavedItem.ItemId` — `Cascade`,
   `ItemRequest.ResultingItemId` — `SetNull` (обе связи настроены раньше, для этой фичи не
   менялись).
-- **Справочник «Оплата заданий»** (2026-09-09, `/admin/economy/quest-pay`,
-  `AdminQuestPay.razor`) — admin-only таблица (Категория × Опасность × Эпоха → оплата партии
-  в зм) для подготовки мастера к сессии, обычная роль игрока её не видит нигде (ни в каталоге,
-  ни в расчёте цены — `PriceCalculationService`/`CityModifier`/`SeasonModifier` эту таблицу не
-  читают, полностью независимая сущность `QuestPayRate`). CRUD — отдельный
-  `IQuestPayRateAdminService`/`QuestPayRateAdminService` (папка `QuestPay`, не довесок к
-  `IEconomyAdminService`, у которого другая ответственность — коэффициенты цены), UI по
-  образцу `AdminSessions.razor` (список + модалка редактирования), не матрица типа
-  `CityModifier`. Excel-импорт/экспорт **переиспользует** существующий механизм — новые
-  `ImportQuestPayRatesAsync`/`ExportQuestPayRatesAsync` на тех же
-  `IExcelEconomyImportService`/`IExcelEconomyExportService`, лист `"Оплата заданий"`, панель —
-  тот же `ExcelSheetPanel`. Единственное отличие от остальных листов: у строк нет естественного
-  ключа (несколько заданий одной Категории+Опасности+Эпохи допустимы, это не координата
-  матрицы) — импорт не обновляет по ключу, а полностью заменяет содержимое таблицы содержимым
-  листа при каждой загрузке.
+- **Справочник «Оплата заданий»** (2026-09-09, `/admin/quest-pay`, `AdminQuestPay.razor`) —
+  admin-only таблица (Категория × Опасность × Эпоха → оплата партии в зм) для подготовки
+  мастера к сессии, обычная роль игрока её не видит нигде (ни в каталоге, ни в расчёте цены —
+  `PriceCalculationService`/`CityModifier`/`SeasonModifier` эту таблицу не читают, полностью
+  независимая сущность `QuestPayRate`). CRUD — отдельный `IQuestPayRateAdminService`/
+  `QuestPayRateAdminService` (папка `QuestPay`, не довесок к `IEconomyAdminService`, у которого
+  другая ответственность — коэффициенты цены), UI по образцу `AdminSessions.razor` (список +
+  модалка редактирования), не матрица типа `CityModifier`. Excel-импорт/экспорт
+  **переиспользует** существующий механизм — `ImportQuestPayRatesAsync`/
+  `ExportQuestPayRatesAsync` на тех же `IExcelEconomyImportService`/`IExcelEconomyExportService`,
+  лист `"Оплата заданий"`, панель — тот же `ExcelSheetPanel`; шаблон — `templates/economy-
+  quest-pay.xlsx`, добавлен к остальным пяти. Единственное отличие от остальных листов: у строк
+  нет естественного ключа (несколько заданий одной Категории+Опасности+Эпохи допустимы, это не
+  координата матрицы) — импорт не обновляет по ключу, а полностью заменяет содержимое таблицы
+  содержимым листа при каждой загрузке.
+- **Страница «Оплата заданий» — отдельная вкладка рядом с каталогом, не часть раздела
+  «Города и сессии»** (2026-09-09): изначально жила на `/admin/economy/quest-pay` под
+  `EconomySubNav` вместе с Городами/Сессиями — по смыслу она с ними не связана (не коэффициент
+  цены, отдельный GM-инструмент), и после ревью её вынесли на `/admin/quest-pay` со своим `<h1>`,
+  без `AdminNav`/`EconomySubNav`. Ссылка — прямо в верхнем меню (`MainLayout.razor`), рядом с
+  «Каталог», видна только `RoleNames.Admin` (тем же способом, что и ссылка «Админка»).
+  Excel-экспорт получил свой контроллер `QuestPayExportController` (`api/admin/quest-pay/export`)
+  вместо метода в `EconomyExportController` — тот же паттерн, что `ItemsExportController` для
+  листа "Предметы": своя точка входа у страницы, которая не относится к разделу economy,
+  хотя `IExcelEconomyExportService` (сам сервис экспорта) не переносился — он остаётся общим
+  для всех листов, меняется только контроллер-роутинг.
 
 ## Экономическая логика (перенесена из Excel один в один)
 

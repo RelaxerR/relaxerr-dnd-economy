@@ -1,4 +1,4 @@
-@page "/admin/economy/quest-pay"
+@page "/admin/quest-pay"
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using DndEconomy.Application.Import
@@ -11,12 +11,10 @@
 @inject IJSRuntime JSRuntime
 @inject ToastService ToastService
 
-<PageTitle>Оплата заданий — админка Relaxerr</PageTitle>
+<PageTitle>Оплата заданий — Relaxerr</PageTitle>
 <ToastContainer />
 
-<h1>Экономические сессии и города</h1>
-<AdminNav />
-<EconomySubNav />
+<h1>Оплата заданий</h1>
 
 <p class="catalog-meta">
   Справочник оплаты заданий (Категория × Опасность × Эпоха → оплата партии в зм) — только для
@@ -159,7 +157,7 @@ else
   </div>
 }
 
-<ExcelSheetPanel Title="Оплата заданий" SheetName="Оплата заданий" ExportUrl="/api/admin/economy/quest-pay/export"
+<ExcelSheetPanel Title="Оплата заданий" SheetName="Оплата заданий" ExportUrl="/api/admin/quest-pay/export"
                  ImportFunc="ExcelImportService.ImportQuestPayRatesAsync" OnImported="ReloadAsync" />
 
 @code {

@@ -61,14 +61,6 @@ public sealed class EconomyExportController : ControllerBase
     return AsXlsx(content, "priem-monet");
   }
 
-  /// <summary>Лист "Оплата заданий" — справочник оплаты заданий мастера.</summary>
-  [HttpGet("quest-pay/export")]
-  public async Task<IActionResult> ExportQuestPayRates(CancellationToken cancellationToken)
-  {
-    var content = await _exportService.ExportQuestPayRatesAsync(cancellationToken);
-    return AsXlsx(content, "oplata-zadaniy");
-  }
-
   #endregion
 
   #region Приватные шаги
