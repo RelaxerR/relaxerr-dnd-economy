@@ -193,6 +193,21 @@ InvalidUser, статичный SSR-рендер через `[ExcludeFromInterac
   безопасно на уровне схемы БД без ручной зачистки: `UserSavedItem.ItemId` — `Cascade`,
   `ItemRequest.ResultingItemId` — `SetNull` (обе связи настроены раньше, для этой фичи не
   менялись).
+- **Справочник «Оплата заданий»** (2026-09-09, `/admin/economy/quest-pay`,
+  `AdminQuestPay.razor`) — admin-only таблица (Категория × Опасность × Эпоха → оплата партии
+  в зм) для подготовки мастера к сессии, обычная роль игрока её не видит нигде (ни в каталоге,
+  ни в расчёте цены — `PriceCalculationService`/`CityModifier`/`SeasonModifier` эту таблицу не
+  читают, полностью независимая сущность `QuestPayRate`). CRUD — отдельный
+  `IQuestPayRateAdminService`/`QuestPayRateAdminService` (папка `QuestPay`, не довесок к
+  `IEconomyAdminService`, у которого другая ответственность — коэффициенты цены), UI по
+  образцу `AdminSessions.razor` (список + модалка редактирования), не матрица типа
+  `CityModifier`. Excel-импорт/экспорт **переиспользует** существующий механизм — новые
+  `ImportQuestPayRatesAsync`/`ExportQuestPayRatesAsync` на тех же
+  `IExcelEconomyImportService`/`IExcelEconomyExportService`, лист `"Оплата заданий"`, панель —
+  тот же `ExcelSheetPanel`. Единственное отличие от остальных листов: у строк нет естественного
+  ключа (несколько заданий одной Категории+Опасности+Эпохи допустимы, это не координата
+  матрицы) — импорт не обновляет по ключу, а полностью заменяет содержимое таблицы содержимым
+  листа при каждой загрузке.
 
 ## Экономическая логика (перенесена из Excel один в один)
 
