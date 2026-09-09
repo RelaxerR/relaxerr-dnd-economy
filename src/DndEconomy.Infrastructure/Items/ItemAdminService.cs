@@ -48,7 +48,8 @@ public sealed class ItemAdminService : IItemAdminService
       NameEn = input.NameEn,
       BaseCost = input.BaseCost,
       Weight = input.Weight,
-      IsPlayerSuggested = input.IsPlayerSuggested
+      IsPlayerSuggested = input.IsPlayerSuggested,
+      IsService = input.IsService
     };
 
     dbContext.Items.Add(item);

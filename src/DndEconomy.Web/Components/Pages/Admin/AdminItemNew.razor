@@ -32,6 +32,19 @@
       <InputNumber @bind-Value="model.BaseCost" />
     </div>
     <div class="form-field"><label>Вес</label><InputNumber @bind-Value="model.Weight" /></div>
+    <div class="form-field">
+      <label>
+        <InputCheckbox @bind-Value="model.IsService" />
+        Это услуга, а не физический товар (например, "Обмен валют")
+      </label>
+      <span class="input-hint">
+        Базовую стоимость и вес для услуги обычно оставляют равными 0 — цена не считается по
+        обычной формуле, вместо неё в каталоге показывается коэффициент, заведённый для
+        Типа+Подтипа этой записи на странице «Коэф. города», интерпретированный как доля
+        суммы после комиссии. Для услуги отсутствие коэффициента для города означает
+        "не оказывается", а не "без комиссии".
+      </span>
+    </div>
 
     <button type="submit" class="btn btn--primary">Создать</button>
   </EditForm>
@@ -85,7 +98,8 @@
       NameEn = string.IsNullOrWhiteSpace(model.NameEn) ? null : model.NameEn,
       BaseCost = model.BaseCost,
       Weight = model.Weight,
-      IsPlayerSuggested = false
+      IsPlayerSuggested = false,
+      IsService = model.IsService
     };
 
     await ItemAdminService.CreateItemAsync(input, CancellationToken.None);
@@ -102,5 +116,6 @@
     public string? NameEn { get; set; }
     public decimal BaseCost { get; set; }
     public decimal Weight { get; set; }
+    public bool IsService { get; set; }
   }
 }

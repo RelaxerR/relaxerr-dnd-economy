@@ -14,6 +14,13 @@ public sealed record NewItemInput
   public required decimal BaseCost { get; init; }
   public required decimal Weight { get; init; }
   public bool IsPlayerSuggested { get; init; }
+
+  /// <summary>
+  /// True для нефизических услуг (например, "Обмен валют") — см. Item.IsService. Комиссия по
+  /// городу для такой записи задаётся через уже существующую матрицу CityModifier
+  /// (/admin/economy/city-modifiers) для Type+Subtype этого предмета.
+  /// </summary>
+  public bool IsService { get; init; }
 }
 
 /// <summary>

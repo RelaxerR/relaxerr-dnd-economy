@@ -113,13 +113,22 @@ else
         }
         @if (!item.IsAvailable)
         {
-          <span class="badge badge--unavailable">Нет в наличии</span>
+          <span class="badge badge--unavailable">@(item.IsService ? "Не оказывается здесь" : "Нет в наличии")</span>
         }
 
-        <span class="catalog-card__prices">
-          <span class="catalog-card__price catalog-card__price--buy">Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
-          <span class="catalog-card__price catalog-card__price--sell">Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
-        </span>
+        @if (item.IsService)
+        {
+          <span class="catalog-card__prices">
+            <span class="catalog-card__price">@CommissionFormatter.Label(item.CommissionRate)</span>
+          </span>
+        }
+        else
+        {
+          <span class="catalog-card__prices">
+            <span class="catalog-card__price catalog-card__price--buy">Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
+            <span class="catalog-card__price catalog-card__price--sell">Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
+          </span>
+        }
       </a>
     }
   </div>

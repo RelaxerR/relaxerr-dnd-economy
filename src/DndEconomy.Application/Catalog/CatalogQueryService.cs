@@ -90,19 +90,42 @@ public sealed class CatalogQueryService : ICatalogQueryService
     return session;
   }
 
-  private static CatalogItemViewModel ToViewModel(CatalogPricedRow row, ActiveSessionContext session) => new()
+  private static CatalogItemViewModel ToViewModel(CatalogPricedRow row, ActiveSessionContext session)
   {
-    ItemId = row.ItemId,
-    NameRu = row.NameRu,
-    NameEn = row.NameEn,
-    Category = row.Category,
-    Type = row.Type,
-    Subtype = row.Subtype,
-    Weight = row.Weight,
-    IsPlayerSuggested = row.IsPlayerSuggested,
-    BuyPrice = PriceFormulas.ResolveBuyPrice(row.CalculatedCost),
-    SellPrice = PriceFormulas.ResolveSellPrice(row.CalculatedCost, row.BaseCost, session.SellCoefficient)
-  };
+    if (row.IsService)
+    {
+      return new CatalogItemViewModel
+      {
+        ItemId = row.ItemId,
+        NameRu = row.NameRu,
+        NameEn = row.NameEn,
+        Category = row.Category,
+        Type = row.Type,
+        Subtype = row.Subtype,
+        Weight = row.Weight,
+        IsPlayerSuggested = row.IsPlayerSuggested,
+        BuyPrice = null,
+        SellPrice = 0m,
+        IsService = true,
+        CommissionRate = row.CityCoefficientRaw
+      };
+    }
+
+    return new CatalogItemViewModel
+    {
+      ItemId = row.ItemId,
+      NameRu = row.NameRu,
+      NameEn = row.NameEn,
+      Category = row.Category,
+      Type = row.Type,
+      Subtype = row.Subtype,
+      Weight = row.Weight,
+      IsPlayerSuggested = row.IsPlayerSuggested,
+      BuyPrice = PriceFormulas.ResolveBuyPrice(row.CalculatedCost),
+      SellPrice = PriceFormulas.ResolveSellPrice(row.CalculatedCost, row.BaseCost, session.SellCoefficient),
+      IsService = false
+    };
+  }
 
   #endregion
 }

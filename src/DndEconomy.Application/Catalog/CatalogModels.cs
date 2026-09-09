@@ -42,6 +42,15 @@ public sealed class CatalogPricedRow
   public required decimal BaseCost { get; init; }
   public required bool IsPlayerSuggested { get; init; }
   public required decimal CalculatedCost { get; init; }
+  public required bool IsService { get; init; }
+
+  /// <summary>
+  /// Сырой коэффициент CityModifier для (Type, Subtype, город сессии), БЕЗ умножения на
+  /// BaseCost — null, если строки нет. Только для <see cref="IsService"/>: обычная формула
+  /// CalculatedCost для услуги (BaseCost = 0) всегда даёт 0 независимо от города, поэтому
+  /// доступность/комиссия услуги читаются отсюда, а не из CalculatedCost.
+  /// </summary>
+  public decimal? CityCoefficientRaw { get; init; }
 }
 
 /// <summary>Предмет каталога с уже посчитанными ценами покупки/продажи для UI.</summary>
@@ -58,7 +67,17 @@ public sealed class CatalogItemViewModel
   public decimal? BuyPrice { get; init; }
   public required decimal SellPrice { get; init; }
 
-  public bool IsAvailable => BuyPrice is not null;
+  /// <summary>Признак того, что это услуга (Item.IsService), а не физический товар.</summary>
+  public required bool IsService { get; init; }
+
+  /// <summary>
+  /// Только для услуг: доля суммы, которую вернут игроку после комиссии. Null означает
+  /// "услуга в этом городе не оказывается" (см. CatalogPricedRow.CityCoefficientRaw).
+  /// </summary>
+  public decimal? CommissionRate { get; init; }
+
+  /// <summary>Для услуг — CommissionRate положителен, для товаров — BuyPrice не null.</summary>
+  public bool IsAvailable => IsService ? CommissionRate is > 0 : BuyPrice is not null;
 }
 
 /// <summary>Страница результатов каталога вместе с контекстом активной сессии (для отображения "цены на дату").</summary>

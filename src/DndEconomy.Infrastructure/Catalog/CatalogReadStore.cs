@@ -35,7 +35,7 @@ public sealed class CatalogReadStore : ICatalogReadStore
       .Where(BuildFilterPredicate(query));
 
     if (query.OnlyAvailable == true)
-      priced = priced.Where(x => x.CalculatedCost > 0);
+      priced = priced.Where(x => x.IsService ? x.CityCoefficientRaw > 0 : x.CalculatedCost > 0);
 
     var totalCount = await priced.CountAsync(cancellationToken);
 
@@ -144,7 +144,9 @@ public sealed class CatalogReadStore : ICatalogReadStore
         IsPlayerSuggested = item.IsPlayerSuggested,
         CalculatedCost = item.BaseCost * session.BaseCoefficient
           * (cityMod != null ? cityMod.Coefficient : 1m)
-          * (seasonMod != null ? seasonMod.Coefficient : 1m)
+          * (seasonMod != null ? seasonMod.Coefficient : 1m),
+        IsService = item.IsService,
+        CityCoefficientRaw = cityMod != null ? (decimal?)cityMod.Coefficient : null
       };
   }
 

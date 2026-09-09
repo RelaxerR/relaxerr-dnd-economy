@@ -11,6 +11,9 @@ public sealed class ItemPricingSource
   public required string Type { get; init; }
   public required string Subtype { get; init; }
   public required decimal BaseCost { get; init; }
+
+  /// <summary>Признак услуги (Item.IsService) — переключает расчёт на комиссию вместо цены, см. <see cref="PriceCalculationService"/>.</summary>
+  public required bool IsService { get; init; }
 }
 
 /// <summary>

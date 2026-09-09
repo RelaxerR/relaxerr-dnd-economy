@@ -46,7 +46,9 @@ public sealed class PlayerProfileService : IPlayerProfileService
         Subtype = savedItem.Item.Subtype,
         Note = savedItem.Note,
         BuyPrice = price?.BuyPrice,
-        SellPrice = price?.SellPrice
+        SellPrice = price?.SellPrice,
+        IsService = price?.IsService ?? false,
+        CommissionRate = price?.CommissionRate
       });
     }
 
