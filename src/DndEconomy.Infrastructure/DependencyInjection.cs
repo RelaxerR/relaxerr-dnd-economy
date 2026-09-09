@@ -146,6 +146,7 @@ public static class DependencyInjection
   private static void AddApplicationServices(IServiceCollection services)
   {
     services.AddScoped<IEconomyPricingReadStore, EconomyPricingReadStore>();
+    services.AddScoped<ICityCoinAcceptanceReadStore, CityCoinAcceptanceReadStore>();
     services.AddScoped<IPriceCalculationService, PriceCalculationService>();
     services.AddScoped<IExcelEconomyImportService, ExcelEconomyImportService>();
     services.AddScoped<IExcelItemExportService, ExcelItemExportService>();

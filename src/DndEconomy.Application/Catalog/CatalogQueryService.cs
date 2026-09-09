@@ -15,17 +15,20 @@ public sealed class CatalogQueryService : ICatalogQueryService
 
   private readonly ICatalogReadStore _readStore;
   private readonly IEconomyPricingReadStore _pricingReadStore;
+  private readonly ICityCoinAcceptanceReadStore _coinAcceptanceReadStore;
   private readonly TimeProvider _timeProvider;
   private readonly ILogger<CatalogQueryService> _logger;
 
   public CatalogQueryService(
     ICatalogReadStore readStore,
     IEconomyPricingReadStore pricingReadStore,
+    ICityCoinAcceptanceReadStore coinAcceptanceReadStore,
     TimeProvider timeProvider,
     ILogger<CatalogQueryService> logger)
   {
     _readStore = readStore;
     _pricingReadStore = pricingReadStore;
+    _coinAcceptanceReadStore = coinAcceptanceReadStore;
     _timeProvider = timeProvider;
     _logger = logger;
   }
@@ -47,6 +50,7 @@ public sealed class CatalogQueryService : ICatalogQueryService
       : query;
 
     var (rows, totalCount) = await _readStore.GetPageAsync(normalizedQuery, session, cancellationToken);
+    var coinAcceptance = await _coinAcceptanceReadStore.GetForCityAsync(session.CityId, cancellationToken);
 
     return new CatalogPage
     {
@@ -56,7 +60,8 @@ public sealed class CatalogQueryService : ICatalogQueryService
       PageSize = normalizedQuery.PageSize,
       ActiveSessionName = session.SessionName,
       CityName = session.CityName,
-      GameDateLabel = session.GameDateLabel
+      GameDateLabel = session.GameDateLabel,
+      CoinAcceptance = coinAcceptance
     };
   }
 
@@ -85,19 +90,42 @@ public sealed class CatalogQueryService : ICatalogQueryService
     return session;
   }
 
-  private static CatalogItemViewModel ToViewModel(CatalogPricedRow row, ActiveSessionContext session) => new()
+  private static CatalogItemViewModel ToViewModel(CatalogPricedRow row, ActiveSessionContext session)
   {
-    ItemId = row.ItemId,
-    NameRu = row.NameRu,
-    NameEn = row.NameEn,
-    Category = row.Category,
-    Type = row.Type,
-    Subtype = row.Subtype,
-    Weight = row.Weight,
-    IsPlayerSuggested = row.IsPlayerSuggested,
-    BuyPrice = PriceFormulas.ResolveBuyPrice(row.CalculatedCost),
-    SellPrice = PriceFormulas.ResolveSellPrice(row.CalculatedCost, row.BaseCost, session.SellCoefficient)
-  };
+    if (row.IsService)
+    {
+      return new CatalogItemViewModel
+      {
+        ItemId = row.ItemId,
+        NameRu = row.NameRu,
+        NameEn = row.NameEn,
+        Category = row.Category,
+        Type = row.Type,
+        Subtype = row.Subtype,
+        Weight = row.Weight,
+        IsPlayerSuggested = row.IsPlayerSuggested,
+        BuyPrice = null,
+        SellPrice = 0m,
+        IsService = true,
+        CommissionRate = row.CityCoefficientRaw
+      };
+    }
+
+    return new CatalogItemViewModel
+    {
+      ItemId = row.ItemId,
+      NameRu = row.NameRu,
+      NameEn = row.NameEn,
+      Category = row.Category,
+      Type = row.Type,
+      Subtype = row.Subtype,
+      Weight = row.Weight,
+      IsPlayerSuggested = row.IsPlayerSuggested,
+      BuyPrice = PriceFormulas.ResolveBuyPrice(row.CalculatedCost),
+      SellPrice = PriceFormulas.ResolveSellPrice(row.CalculatedCost, row.BaseCost, session.SellCoefficient),
+      IsService = false
+    };
+  }
 
   #endregion
 }

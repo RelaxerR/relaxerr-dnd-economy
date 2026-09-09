@@ -3,6 +3,7 @@
 @using System.Text.Json
 @using DndEconomy.Application.Catalog
 @using DndEconomy.Application.Pricing
+@using DndEconomy.Domain.Constants
 @inject ICatalogQueryService CatalogQueryService
 @inject ICatalogReadStore CatalogReadStore
 @inject IJSRuntime JSRuntime
@@ -67,6 +68,35 @@ else
     (сессия «@catalogPage.ActiveSessionName») · найдено предметов: @catalogPage.TotalCount
   </p>
 
+  @if (catalogPage.CoinAcceptance is not null)
+  {
+    <details class="catalog-coin-acceptance">
+      <summary>Приём монет в городе @catalogPage.CityName</summary>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Номинал</th>
+            <th>Условие</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var rate in catalogPage.CoinAcceptance.Denominations)
+          {
+            var info = CoinDenominations.All.Single(x => x.Denomination == rate.Denomination);
+            <tr>
+              <td>@info.DisplayName (@info.Abbreviation)</td>
+              <td>@CoinAcceptanceLabel(rate.AcceptanceRate)</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      @if (!string.IsNullOrWhiteSpace(catalogPage.CoinAcceptance.Note))
+      {
+        <p class="catalog-meta">@catalogPage.CoinAcceptance.Note</p>
+      }
+    </details>
+  }
+
   <div class="catalog-grid">
     @foreach (var item in catalogPage.Items)
     {
@@ -83,13 +113,22 @@ else
         }
         @if (!item.IsAvailable)
         {
-          <span class="badge badge--unavailable">Нет в наличии</span>
+          <span class="badge badge--unavailable">@(item.IsService ? "Не оказывается здесь" : "Нет в наличии")</span>
         }
 
-        <span class="catalog-card__prices">
-          <span class="catalog-card__price catalog-card__price--buy">Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
-          <span class="catalog-card__price catalog-card__price--sell">Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
-        </span>
+        @if (item.IsService)
+        {
+          <span class="catalog-card__prices">
+            <span class="catalog-card__price">@CommissionFormatter.Label(item.CommissionRate)</span>
+          </span>
+        }
+        else
+        {
+          <span class="catalog-card__prices">
+            <span class="catalog-card__price catalog-card__price--buy">Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
+            <span class="catalog-card__price catalog-card__price--sell">Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
+          </span>
+        }
       </a>
     }
   </div>
@@ -108,6 +147,13 @@ else
   // Ключ localStorage браузера — фильтры сохраняются на клиенте, не в БД (они личные для
   // устройства/браузера игрока, а не для аккаунта).
   private const string FiltersStorageKey = "dndeconomy.catalog.filters";
+
+  private static string CoinAcceptanceLabel(decimal acceptanceRate) => acceptanceRate switch
+  {
+    <= 0 => "Отказывает",
+    >= 1 => "Принимается по номиналу",
+    _ => $"Со скидкой {(1 - acceptanceRate):P0}"
+  };
 
   private CatalogPage? catalogPage;
   private IReadOnlyList<string> categories = [];

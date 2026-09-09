@@ -15,10 +15,20 @@ public class City : AuditableEntity
   /// <summary>Категория населённого пункта — влияет на то, какие типы товаров в нём доступны.</summary>
   public CitySize Size { get; set; }
 
+  /// <summary>
+  /// Свободный текст с нюансами приёма монет, не сводимыми к номиналу (например, "золото —
+  /// только через старосту" или "медь/серебро не принимают за товар дороже мелкого прайса").
+  /// Показывается игрокам рядом с таблицей <see cref="CoinAcceptances"/>.
+  /// </summary>
+  public string? CoinAcceptanceNote { get; set; }
+
   #region Навигационные свойства
 
   /// <summary>Модификаторы стоимости товаров, специфичные для этого города.</summary>
   public ICollection<CityModifier> Modifiers { get; set; } = new List<CityModifier>();
+
+  /// <summary>Условия приёма номиналов монет, специфичные для этого города.</summary>
+  public ICollection<CityCoinAcceptance> CoinAcceptances { get; set; } = new List<CityCoinAcceptance>();
 
   #endregion
 }

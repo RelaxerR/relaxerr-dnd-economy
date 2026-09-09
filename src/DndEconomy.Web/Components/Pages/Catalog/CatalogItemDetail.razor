@@ -32,7 +32,10 @@ else
     }
 
     <p class="catalog-card__meta">@item.Category · @item.Type / @item.Subtype</p>
-    <p class="catalog-card__meta">Вес: @item.Weight.ToString("0.##")</p>
+    @if (!item.IsService)
+    {
+      <p class="catalog-card__meta">Вес: @item.Weight.ToString("0.##")</p>
+    }
 
     @if (item.IsPlayerSuggested)
     {
@@ -40,13 +43,22 @@ else
     }
     @if (!item.IsAvailable)
     {
-      <span class="badge badge--unavailable">Нет в наличии</span>
+      <span class="badge badge--unavailable">@(item.IsService ? "Не оказывается в этом городе" : "Нет в наличии")</span>
     }
 
-    <p class="catalog-card__prices">
-      <span>Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
-      <span>Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
-    </p>
+    @if (item.IsService)
+    {
+      <p class="catalog-card__prices">
+        <span>@CommissionFormatter.Label(item.CommissionRate)</span>
+      </p>
+    }
+    else
+    {
+      <p class="catalog-card__prices">
+        <span>Покупка: @(item.BuyPrice is not null ? CurrencyFormatter.Format(item.BuyPrice.Value) : "—")</span>
+        <span>Продажа: @CurrencyFormatter.Format(item.SellPrice)</span>
+      </p>
+    }
 
     <button class="favorite-toggle" @onclick="ToggleFavoriteAsync" aria-pressed="@isFavorite"
       title="@(isFavorite ? "Убрать из избранного" : "Сохранить в избранное")">

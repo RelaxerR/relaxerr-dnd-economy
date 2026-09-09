@@ -47,6 +47,26 @@ public sealed class PriceCalculationService : IPriceCalculationService
       return null;
     }
 
+    if (item.IsService)
+    {
+      var commissionRate = await _readStore.GetServiceCityCoefficientAsync(item.Type, item.Subtype, session.CityId, cancellationToken);
+
+      _logger.LogInformation(
+        "Цена рассчитана: услуга {ItemId}, сессия {Session}, город {City}, доля после комиссии {CommissionRate}",
+        itemId, session.SessionName, session.CityName, commissionRate);
+
+      return new ItemPriceResult
+      {
+        ItemId = itemId,
+        SellPrice = 0m,
+        IsService = true,
+        CommissionRate = commissionRate,
+        ActiveSessionName = session.SessionName,
+        CityName = session.CityName,
+        SeasonName = session.Season.ToString()
+      };
+    }
+
     var cityCoefficient = await _readStore.GetCityCoefficientAsync(item.Type, item.Subtype, session.CityId, cancellationToken);
     var seasonCoefficient = await _readStore.GetSeasonCoefficientAsync(item.Type, item.Subtype, session.Season, cancellationToken);
 

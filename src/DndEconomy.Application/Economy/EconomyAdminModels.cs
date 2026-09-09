@@ -9,6 +9,29 @@ public sealed record CitySummary
   public required CitySize Size { get; init; }
 }
 
+/// <summary>Одна строка матрицы "Номинал × Город" — доля приёма по каждому городу, где она задана явно.</summary>
+public sealed record CoinAcceptanceMatrixRow
+{
+  public required CoinDenomination Denomination { get; init; }
+
+  /// <summary>Доля приёма по Id города. Отсутствие ключа = 1 (принимается по номиналу без скидки).</summary>
+  public required IReadOnlyDictionary<Guid, decimal> AcceptanceRateByCityId { get; init; }
+}
+
+/// <summary>
+/// Полная матрица приёма номиналов для редактора в админке. В отличие от
+/// <see cref="CityModifierMatrix"/>, строки (номиналы) фиксированы и присутствуют всегда —
+/// их не создаёт и не удаляет админ, только правит значения ячеек.
+/// </summary>
+public sealed record CoinAcceptanceMatrix
+{
+  public required IReadOnlyList<CitySummary> Cities { get; init; }
+  public required IReadOnlyList<CoinAcceptanceMatrixRow> Rows { get; init; }
+
+  /// <summary>Заметки о нюансах приёма монет по Id города (см. City.CoinAcceptanceNote).</summary>
+  public required IReadOnlyDictionary<Guid, string?> NotesByCityId { get; init; }
+}
+
 public sealed record EconomySessionSummary
 {
   public required Guid Id { get; init; }
@@ -51,6 +74,14 @@ public sealed record CityModifierMatrixRow
 
   /// <summary>Коэффициент по Id города. Отсутствие ключа = коэффициент 1 (без изменений).</summary>
   public required IReadOnlyDictionary<Guid, decimal> CoefficientsByCityId { get; init; }
+
+  /// <summary>
+  /// True, если Тип+Подтип этой строки принадлежит хотя бы одному <c>Item.IsService</c>.
+  /// Для таких строк коэффициент — не наценка/скидка к цене товара, а доля суммы, которую
+  /// вернут игроку после комиссии, и отсутствие ячейки для города означает "услуга здесь не
+  /// оказывается" — НЕ коэффициент 1, в отличие от обычных товарных строк (см. AdminCityModifiers.razor).
+  /// </summary>
+  public required bool IsService { get; init; }
 }
 
 /// <summary>Полная матрица коэффициентов по городам для редактора в админке.</summary>

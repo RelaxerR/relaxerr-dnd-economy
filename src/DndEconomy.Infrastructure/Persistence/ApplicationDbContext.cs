@@ -20,6 +20,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
   public DbSet<Item> Items => Set<Item>();
   public DbSet<City> Cities => Set<City>();
   public DbSet<CityModifier> CityModifiers => Set<CityModifier>();
+  public DbSet<CityCoinAcceptance> CityCoinAcceptances => Set<CityCoinAcceptance>();
   public DbSet<SeasonModifier> SeasonModifiers => Set<SeasonModifier>();
   public DbSet<EconomySession> EconomySessions => Set<EconomySession>();
   public DbSet<UserSavedItem> UserSavedItems => Set<UserSavedItem>();

@@ -48,10 +48,19 @@
               <a class="profile-favorite-item__link" href="@($"catalog/{favorite.ItemId}")">
                 <span class="catalog-card__name">@favorite.NameRu</span>
                 <span class="catalog-card__meta">@favorite.Category · @favorite.Type / @favorite.Subtype</span>
-                <span class="catalog-card__prices">
-                  <span>Покупка: @(favorite.BuyPrice is not null ? CurrencyFormatter.Format(favorite.BuyPrice.Value) : "—")</span>
-                  <span>Продажа: @(favorite.SellPrice is not null ? CurrencyFormatter.Format(favorite.SellPrice.Value) : "—")</span>
-                </span>
+                @if (favorite.IsService)
+                {
+                  <span class="catalog-card__prices">
+                    <span>@CommissionFormatter.Label(favorite.CommissionRate)</span>
+                  </span>
+                }
+                else
+                {
+                  <span class="catalog-card__prices">
+                    <span>Покупка: @(favorite.BuyPrice is not null ? CurrencyFormatter.Format(favorite.BuyPrice.Value) : "—")</span>
+                    <span>Продажа: @(favorite.SellPrice is not null ? CurrencyFormatter.Format(favorite.SellPrice.Value) : "—")</span>
+                  </span>
+                }
               </a>
               <button class="btn profile-favorite-item__remove" title="Удалить из избранного"
                 @onclick="() => RemoveFavoriteAsync(favorite.ItemId)">Удалить</button>

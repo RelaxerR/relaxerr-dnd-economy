@@ -38,7 +38,8 @@ public sealed class EconomyPricingReadStore : IEconomyPricingReadStore
         ItemId = x.Id,
         Type = x.Type,
         Subtype = x.Subtype,
-        BaseCost = x.BaseCost
+        BaseCost = x.BaseCost,
+        IsService = x.IsService
       })
       .SingleOrDefaultAsync(cancellationToken);
   }
@@ -101,6 +102,16 @@ public sealed class EconomyPricingReadStore : IEconomyPricingReadStore
       .SingleOrDefaultAsync(cancellationToken);
 
     return coefficient ?? 1m;
+  }
+
+  /// <inheritdoc />
+  public async Task<decimal?> GetServiceCityCoefficientAsync(string type, string subtype, Guid cityId, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    return await dbContext.CityModifiers
+      .Where(x => x.Type == type && x.Subtype == subtype && x.CityId == cityId)
+      .Select(x => (decimal?)x.Coefficient)
+      .SingleOrDefaultAsync(cancellationToken);
   }
 
   /// <inheritdoc />

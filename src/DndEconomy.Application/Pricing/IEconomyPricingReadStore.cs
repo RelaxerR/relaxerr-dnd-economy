@@ -21,6 +21,15 @@ public interface IEconomyPricingReadStore
   /// <summary>Возвращает коэффициент города для пары Тип+Подтип. 1, если явного модификатора нет.</summary>
   Task<decimal> GetCityCoefficientAsync(string type, string subtype, Guid cityId, CancellationToken cancellationToken);
 
+  /// <summary>
+  /// Возвращает коэффициент города для пары Тип+Подтип услуги (Item.IsService), интерпретируемый
+  /// как доля суммы после комиссии. В отличие от <see cref="GetCityCoefficientAsync"/> — null,
+  /// если явного модификатора нет ("услуга в этом городе не оказывается"), а не 1: для услуги
+  /// умолчание "коэффициент 1" означало бы "бесплатный обменник есть всюду, где админ явно не
+  /// выключил" — обратное задуманному (обменники — редкое исключение, а не правило).
+  /// </summary>
+  Task<decimal?> GetServiceCityCoefficientAsync(string type, string subtype, Guid cityId, CancellationToken cancellationToken);
+
   /// <summary>Возвращает коэффициент сезона для пары Тип+Подтип. 1, если явного модификатора нет.</summary>
   Task<decimal> GetSeasonCoefficientAsync(string type, string subtype, Season season, CancellationToken cancellationToken);
 }

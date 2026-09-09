@@ -160,6 +160,13 @@ public sealed class EconomyAdminService : IEconomyAdminService
 
     var modifiers = await dbContext.CityModifiers.AsNoTracking().ToListAsync(cancellationToken);
 
+    var serviceTypeSubtypes = await dbContext.Items.AsNoTracking()
+      .Where(x => x.IsService)
+      .Select(x => new { x.Type, x.Subtype })
+      .Distinct()
+      .ToListAsync(cancellationToken);
+    var serviceTypeSubtypeSet = serviceTypeSubtypes.Select(x => (x.Type, x.Subtype)).ToHashSet();
+
     var rows = modifiers
       .GroupBy(x => (x.Type, x.Subtype))
       .OrderBy(g => g.Key.Type).ThenBy(g => g.Key.Subtype)
@@ -167,7 +174,8 @@ public sealed class EconomyAdminService : IEconomyAdminService
       {
         Type = g.Key.Type,
         Subtype = g.Key.Subtype,
-        CoefficientsByCityId = g.ToDictionary(x => x.CityId, x => x.Coefficient)
+        CoefficientsByCityId = g.ToDictionary(x => x.CityId, x => x.Coefficient),
+        IsService = serviceTypeSubtypeSet.Contains(g.Key)
       })
       .ToList();
 
@@ -251,6 +259,69 @@ public sealed class EconomyAdminService : IEconomyAdminService
     await dbContext.SeasonModifiers
       .Where(x => x.Type == type && x.Subtype == subtype)
       .ExecuteDeleteAsync(cancellationToken);
+  }
+
+  #endregion
+
+  #region Приём номиналов монет
+
+  /// <inheritdoc />
+  public async Task<CoinAcceptanceMatrix> GetCoinAcceptanceMatrixAsync(CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var cities = await dbContext.Cities.AsNoTracking()
+      .OrderBy(x => x.Name)
+      .Select(x => new CitySummary { Id = x.Id, Name = x.Name, Size = x.Size })
+      .ToListAsync(cancellationToken);
+
+    var notesByCityId = await dbContext.Cities.AsNoTracking()
+      .ToDictionaryAsync(x => x.Id, x => x.CoinAcceptanceNote, cancellationToken);
+
+    var acceptances = await dbContext.CityCoinAcceptances.AsNoTracking().ToListAsync(cancellationToken);
+    var acceptancesByDenomination = acceptances.ToLookup(x => x.Denomination);
+
+    // Строки фиксированы — все 5 номиналов всегда присутствуют, в отличие от CityModifier,
+    // где строки создаёт админ.
+    var rows = Enum.GetValues<CoinDenomination>()
+      .Select(denomination => new CoinAcceptanceMatrixRow
+      {
+        Denomination = denomination,
+        AcceptanceRateByCityId = acceptancesByDenomination[denomination].ToDictionary(x => x.CityId, x => x.AcceptanceRate)
+      })
+      .ToList();
+
+    return new CoinAcceptanceMatrix { Cities = cities, Rows = rows, NotesByCityId = notesByCityId };
+  }
+
+  /// <inheritdoc />
+  public async Task SetCoinAcceptanceRateAsync(Guid cityId, CoinDenomination denomination, decimal acceptanceRate, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var existing = await dbContext.CityCoinAcceptances.SingleOrDefaultAsync(
+      x => x.CityId == cityId && x.Denomination == denomination, cancellationToken);
+
+    if (existing is not null)
+    {
+      existing.AcceptanceRate = acceptanceRate;
+      existing.UpdatedAtUtc = DateTime.UtcNow;
+    }
+    else
+    {
+      dbContext.CityCoinAcceptances.Add(new CityCoinAcceptance { CityId = cityId, Denomination = denomination, AcceptanceRate = acceptanceRate });
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task SetCityCoinAcceptanceNoteAsync(Guid cityId, string? note, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    await dbContext.Cities
+      .Where(x => x.Id == cityId)
+      .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.CoinAcceptanceNote, note), cancellationToken);
   }
 
   #endregion
