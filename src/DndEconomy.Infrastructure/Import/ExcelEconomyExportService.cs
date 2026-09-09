@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using DndEconomy.Application.Economy;
 using DndEconomy.Application.Import;
+using DndEconomy.Application.QuestPay;
 using DndEconomy.Domain.Constants;
 using DndEconomy.Domain.Enums;
 
@@ -15,6 +16,7 @@ public sealed class ExcelEconomyExportService : IExcelEconomyExportService
   private const string SeasonsSheetName = "Сезонность";
   private const string SettingsSheetName = "Настройки";
   private const string CoinAcceptanceSheetName = "Приём монет";
+  private const string QuestPayRatesSheetName = "Оплата заданий";
 
   private static readonly Dictionary<CitySize, string> CitySizeLabels = new()
   {
@@ -33,11 +35,30 @@ public sealed class ExcelEconomyExportService : IExcelEconomyExportService
 
   private static readonly Season[] SeasonOrder = [Season.Spring, Season.Summer, Season.Autumn, Season.Winter];
 
-  private readonly IEconomyAdminService _economyAdminService;
+  private static readonly Dictionary<QuestEpoch, string> QuestEpochLabels = new()
+  {
+    [QuestEpoch.I] = "I",
+    [QuestEpoch.II] = "II",
+    [QuestEpoch.III] = "III",
+    [QuestEpoch.IV] = "IV"
+  };
 
-  public ExcelEconomyExportService(IEconomyAdminService economyAdminService)
+  private static readonly Dictionary<QuestDangerLevel, string> QuestDangerLevelLabels = new()
+  {
+    [QuestDangerLevel.Trivial] = "Тривиальная",
+    [QuestDangerLevel.Easy] = "Лёгкая",
+    [QuestDangerLevel.Standard] = "Стандартная",
+    [QuestDangerLevel.Dangerous] = "Опасная",
+    [QuestDangerLevel.Deadly] = "Смертельная"
+  };
+
+  private readonly IEconomyAdminService _economyAdminService;
+  private readonly IQuestPayRateAdminService _questPayRateAdminService;
+
+  public ExcelEconomyExportService(IEconomyAdminService economyAdminService, IQuestPayRateAdminService questPayRateAdminService)
   {
     _economyAdminService = economyAdminService;
+    _questPayRateAdminService = questPayRateAdminService;
   }
 
   #endregion
@@ -193,6 +214,37 @@ public sealed class ExcelEconomyExportService : IExcelEconomyExportService
     {
       sheet.Cell(row, 1).Value = city.Name;
       sheet.Cell(row, 2).Value = matrix.NotesByCityId.GetValueOrDefault(city.Id);
+      row++;
+    }
+
+    sheet.Columns().AdjustToContents();
+    return SaveToBytes(workbook);
+  }
+
+  /// <inheritdoc />
+  public async Task<byte[]> ExportQuestPayRatesAsync(CancellationToken cancellationToken)
+  {
+    var rates = await _questPayRateAdminService.GetAllAsync(cancellationToken);
+
+    using var workbook = new XLWorkbook();
+    var sheet = workbook.Worksheets.Add(QuestPayRatesSheetName);
+
+    string[] headers = ["Эпоха", "Категория", "Опасность", "Задание", "Длительность", "Оплата партии (зм)", "Примечание по балансу"];
+    for (var i = 0; i < headers.Length; i++)
+    {
+      sheet.Cell(1, i + 1).Value = headers[i];
+    }
+
+    var row = 2;
+    foreach (var rate in rates)
+    {
+      sheet.Cell(row, 1).Value = QuestEpochLabels[rate.Epoch];
+      sheet.Cell(row, 2).Value = rate.Category;
+      sheet.Cell(row, 3).Value = QuestDangerLevelLabels[rate.DangerLevel];
+      sheet.Cell(row, 4).Value = rate.Description;
+      sheet.Cell(row, 5).Value = rate.Duration;
+      sheet.Cell(row, 6).Value = rate.PartyPayment;
+      sheet.Cell(row, 7).Value = rate.BalanceNote;
       row++;
     }
 
