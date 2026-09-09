@@ -1,0 +1,121 @@
+@page "/admin/economy/coin-acceptance"
+@rendermode InteractiveServer
+@using System.Globalization
+@using DndEconomy.Application.Economy
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Domain.Enums
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IEconomyAdminService EconomyAdminService
+@inject ToastService ToastService
+
+<PageTitle>Приём номиналов — админка Relaxerr</PageTitle>
+<ToastContainer />
+
+<h1>Экономические сессии и города</h1>
+<AdminNav />
+<EconomySubNav />
+
+<p class="catalog-meta">
+  Доля приёма — какую часть номинала город реально принимает: 1 — без скидки, например
+  0.7 — принимается со скидкой 30%, 0 — отказывает принимать номинал вовсе. Пустых ячеек
+  нет — всё, что не заведено явно, уже считается долей 1 (принимается по номиналу без
+  скидки). Курс между номиналами фиксированный и нигде не пересчитывается:
+  @string.Join(" = ", CoinDenominations.All.Select(x => $"{x.ValueInCopperPieces}{x.Abbreviation}")).
+</p>
+
+@if (matrix is null)
+{
+  <p>Загрузка...</p>
+}
+else if (matrix.Cities.Count == 0)
+{
+  <p class="catalog-meta">Сначала добавьте хотя бы один город на вкладке «Города».</p>
+}
+else
+{
+  <div class="admin-table-wrap">
+    <table class="admin-table admin-matrix-table">
+      <thead>
+        <tr>
+          <th>Номинал</th>
+          @foreach (var city in matrix.Cities)
+          {
+            <th>@city.Name</th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var row in matrix.Rows)
+        {
+          var denomination = row.Denomination;
+          var info = DenominationInfo(denomination);
+          <tr>
+            <td>@info.DisplayName (@info.Abbreviation)</td>
+            @foreach (var city in matrix.Cities)
+            {
+              var cityId = city.Id;
+              var currentValue = row.AcceptanceRateByCityId.GetValueOrDefault(cityId, 1m);
+              <td>
+                <input type="number" step="0.01" min="0" max="1" class="admin-matrix-table__input"
+                       value="@currentValue.ToString(CultureInfo.InvariantCulture)"
+                       @onchange="e => SaveCellAsync(cityId, denomination, e.Value)" />
+              </td>
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <section class="auth-card">
+    <h2>Заметки по городам</h2>
+    <p class="catalog-meta">
+      Нюансы, не сводимые к номиналу — например, «золото только через старосту» или
+      «медь/серебро не принимают за товар дороже мелкого прайса».
+    </p>
+    @foreach (var city in matrix.Cities)
+    {
+      var cityId = city.Id;
+      <div class="form-field">
+        <label>@city.Name</label>
+        <textarea class="admin-matrix-table__note" rows="2"
+                  @onchange="e => SaveNoteAsync(cityId, e.Value)">@matrix.NotesByCityId.GetValueOrDefault(cityId)</textarea>
+      </div>
+    }
+  </section>
+}
+
+@code {
+  private CoinAcceptanceMatrix? matrix;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    matrix = await EconomyAdminService.GetCoinAcceptanceMatrixAsync(CancellationToken.None);
+  }
+
+  private async Task SaveCellAsync(Guid cityId, CoinDenomination denomination, object? value)
+  {
+    if (!decimal.TryParse(value?.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var rate))
+      return;
+
+    await EconomyAdminService.SetCoinAcceptanceRateAsync(cityId, denomination, rate, CancellationToken.None);
+    await ReloadAsync();
+    ToastService.ShowSuccess("Доля приёма обновлена");
+  }
+
+  private async Task SaveNoteAsync(Guid cityId, object? value)
+  {
+    var note = value?.ToString();
+    await EconomyAdminService.SetCityCoinAcceptanceNoteAsync(cityId, string.IsNullOrWhiteSpace(note) ? null : note, CancellationToken.None);
+    await ReloadAsync();
+    ToastService.ShowSuccess("Заметка сохранена");
+  }
+
+  private static CoinDenominations.Info DenominationInfo(CoinDenomination denomination)
+    => CoinDenominations.All.Single(x => x.Denomination == denomination);
+}

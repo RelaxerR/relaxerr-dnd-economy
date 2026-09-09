@@ -57,4 +57,21 @@ public interface IEconomyAdminService
   Task DeleteSeasonModifierRowAsync(string type, string subtype, CancellationToken cancellationToken);
 
   #endregion
+
+  #region Приём номиналов монет
+
+  /// <summary>
+  /// Полная матрица приёма номиналов "Номинал × Город" для редактора в админке. В отличие от
+  /// матриц коэффициентов, строки (5 номиналов) присутствуют всегда — их не создаёт и не
+  /// удаляет админ.
+  /// </summary>
+  Task<CoinAcceptanceMatrix> GetCoinAcceptanceMatrixAsync(CancellationToken cancellationToken);
+
+  /// <summary>Создаёт или обновляет долю приёма для одной ячейки матрицы (номинал, город).</summary>
+  Task SetCoinAcceptanceRateAsync(Guid cityId, CoinDenomination denomination, decimal acceptanceRate, CancellationToken cancellationToken);
+
+  /// <summary>Обновляет свободный текст с нюансами приёма монет для города.</summary>
+  Task SetCityCoinAcceptanceNoteAsync(Guid cityId, string? note, CancellationToken cancellationToken);
+
+  #endregion
 }
