@@ -6,6 +6,7 @@ using DndEconomy.Application.Items;
 using DndEconomy.Application.Notifications;
 using DndEconomy.Application.Pricing;
 using DndEconomy.Application.Profile;
+using DndEconomy.Application.QuestPay;
 using DndEconomy.Application.Requests;
 using DndEconomy.Application.Users;
 using DndEconomy.Domain.Constants;
@@ -19,6 +20,7 @@ using DndEconomy.Infrastructure.Notifications;
 using DndEconomy.Infrastructure.Persistence;
 using DndEconomy.Infrastructure.Pricing;
 using DndEconomy.Infrastructure.Profile;
+using DndEconomy.Infrastructure.QuestPay;
 using DndEconomy.Infrastructure.Requests;
 using DndEconomy.Infrastructure.Users;
 using Microsoft.AspNetCore.Authentication;
@@ -159,6 +161,7 @@ public static class DependencyInjection
     services.AddScoped<IItemAdminService, ItemAdminService>();
     services.AddScoped<IAdminUserService, AdminUserService>();
     services.AddScoped<IEconomyAdminService, EconomyAdminService>();
+    services.AddScoped<IQuestPayRateAdminService, QuestPayRateAdminService>();
     services.AddSingleton(TimeProvider.System);
   }
 
