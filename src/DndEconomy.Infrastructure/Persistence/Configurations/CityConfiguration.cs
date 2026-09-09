@@ -10,9 +10,15 @@ public class CityConfiguration : IEntityTypeConfiguration<City>
   public void Configure(EntityTypeBuilder<City> builder)
   {
     builder.Property(x => x.Name).HasMaxLength(150).IsRequired();
+    builder.Property(x => x.CoinAcceptanceNote).HasMaxLength(500);
     builder.HasIndex(x => x.Name).IsUnique();
 
     builder.HasMany(x => x.Modifiers)
+      .WithOne(x => x.City)
+      .HasForeignKey(x => x.CityId)
+      .OnDelete(DeleteBehavior.Cascade);
+
+    builder.HasMany(x => x.CoinAcceptances)
       .WithOne(x => x.City)
       .HasForeignKey(x => x.CityId)
       .OnDelete(DeleteBehavior.Cascade);

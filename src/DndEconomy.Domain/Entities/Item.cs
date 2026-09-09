@@ -56,6 +56,17 @@ public class Item : AuditableEntity
   /// </summary>
   public bool IsPlayerSuggested { get; set; }
 
+  /// <summary>
+  /// Признак того, что запись — не физический товар, а услуга (например, "Обмен валют").
+  /// У услуг обычно <see cref="BaseCost"/> = 0 и не имеет смысла обычная формула цены —
+  /// вместо цены покупки/продажи в каталоге показывается коэффициент из <see cref="CityModifier"/>
+  /// для Type+Subtype этого предмета, интерпретированный как доля суммы после комиссии
+  /// (см. PriceCalculationService/CatalogQueryService в Application — в отличие от товаров,
+  /// отсутствие строки CityModifier для услуги означает "недоступна в этом городе", а не
+  /// "коэффициент 1").
+  /// </summary>
+  public bool IsService { get; set; }
+
   #endregion
 
   #region Навигационные свойства
