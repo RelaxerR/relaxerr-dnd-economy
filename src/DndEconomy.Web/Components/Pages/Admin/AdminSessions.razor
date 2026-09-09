@@ -2,10 +2,12 @@
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using DndEconomy.Application.Economy
+@using DndEconomy.Application.Import
 @using DndEconomy.Domain.Constants
 @using DndEconomy.Domain.Enums
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IEconomyAdminService EconomyAdminService
+@inject IExcelEconomyImportService ExcelImportService
 @inject IJSRuntime JSRuntime
 @inject ToastService ToastService
 
@@ -175,6 +177,9 @@
     </div>
   </div>
 }
+
+<ExcelSheetPanel Title="Сессии" SheetName="Настройки" ExportUrl="/api/admin/economy/sessions/export"
+                 ImportFunc="ExcelImportService.ImportSessionsAsync" OnImported="ReloadAsync" />
 
 @code {
   private IReadOnlyList<CitySummary>? cities;

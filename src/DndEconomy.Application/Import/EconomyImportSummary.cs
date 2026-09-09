@@ -11,6 +11,7 @@ public sealed class EconomyImportSummary
   public int CityModifiersImported { get; set; }
   public int SeasonModifiersImported { get; set; }
   public int SessionsImported { get; set; }
+  public int CoinAcceptancesImported { get; set; }
 
   /// <summary>Предупреждения, не прервавшие импорт (например, пропущенная пустая строка).</summary>
   public List<string> Warnings { get; } = [];

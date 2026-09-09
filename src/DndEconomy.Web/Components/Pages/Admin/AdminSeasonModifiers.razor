@@ -1,14 +1,13 @@
 @page "/admin/economy/season-modifiers"
 @rendermode InteractiveServer
-@using System.ComponentModel.DataAnnotations
 @using System.Globalization
-@using DndEconomy.Application.Catalog
 @using DndEconomy.Application.Economy
+@using DndEconomy.Application.Import
 @using DndEconomy.Domain.Constants
 @using DndEconomy.Domain.Enums
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IEconomyAdminService EconomyAdminService
-@inject ICatalogReadStore CatalogReadStore
+@inject IExcelEconomyImportService ExcelImportService
 @inject IJSRuntime JSRuntime
 @inject ToastService ToastService
 
@@ -21,17 +20,12 @@
 
 <p class="catalog-meta">
   Коэффициент — множитель к базовой стоимости товаров с этим Типом+Подтипом в этом сезоне.
-  Пустых ячеек в таблице нет — всё, что не заведено явно, и так уже считается коэффициентом 1
-  (без изменений). Тип и Подтип должны в точности совпадать с указанными у предмета на странице
-  «Новый предмет» — иначе коэффициент ни к одному товару не применится. То же самое можно
-  загрузить файлом на странице «Импорт Excel» (лист «Сезонность», шаблон —
-  <code>economy-seasons.xlsx</code>).
+  Строки — все категории (Тип+Подтип), которые реально встречаются у предметов каталога,
+  подставляются сюда автоматически, заводить их вручную не нужно. Пустых ячеек в таблице нет —
+  всё, что не заведено явно, и так уже считается коэффициентом 1 (без изменений). Строки,
+  помеченные «не используется предметами», — коэффициенты, оставшиеся от категории, которой
+  больше нет ни у одного предмета; их можно удалить, чтобы не путались.
 </p>
-
-@if (error is not null)
-{
-  <div class="status-message status-message--error">@error</div>
-}
 
 @if (rows is null)
 {
@@ -55,12 +49,18 @@ else
       <tbody>
         @if (rows.Count == 0)
         {
-          <tr><td colspan="@(Seasons.Length + 3)" class="catalog-meta">Коэффициентов пока нет — добавьте первую строку ниже.</td></tr>
+          <tr><td colspan="@(Seasons.Length + 3)" class="catalog-meta">Сначала добавьте хотя бы один предмет в каталог — категории появятся здесь автоматически.</td></tr>
         }
         @foreach (var row in rows)
         {
           <tr>
-            <td>@row.Type</td>
+            <td>
+              @row.Type
+              @if (row.IsOrphan)
+              {
+                <span class="badge" title="Предметов с этим Типом+Подтипом в каталоге больше нет — коэффициенты остались от удалённой/переименованной категории.">не используется предметами</span>
+              }
+            </td>
             <td>@row.Subtype</td>
             @foreach (var season in Seasons)
             {
@@ -75,7 +75,10 @@ else
               </td>
             }
             <td>
-              <button type="button" class="btn admin-matrix-table__delete" @onclick="() => DeleteRowAsync(row.Type, row.Subtype)">Удалить</button>
+              @if (row.IsOrphan)
+              {
+                <button type="button" class="btn admin-matrix-table__delete" @onclick="() => DeleteRowAsync(row.Type, row.Subtype)">Удалить</button>
+              }
             </td>
           </tr>
         }
@@ -84,43 +87,16 @@ else
   </div>
 }
 
-<section class="auth-card">
-  <h2>Добавить строку (Тип + Подтип)</h2>
-  <EditForm Model="newRow" OnValidSubmit="AddRowAsync">
-    <DataAnnotationsValidator />
-    <ValidationSummary class="validation-summary" />
-    <div class="form-field"><label>Тип</label><InputText @bind-Value="newRow.Type" list="season-mod-type-options" /></div>
-    <div class="form-field"><label>Подтип</label><InputText @bind-Value="newRow.Subtype" list="season-mod-subtype-options" /></div>
-    <button type="submit" class="btn btn--primary">Добавить строку</button>
-  </EditForm>
-</section>
-
-<datalist id="season-mod-type-options">
-  @foreach (var type in types)
-  {
-    <option value="@type" />
-  }
-</datalist>
-<datalist id="season-mod-subtype-options">
-  @foreach (var subtype in subtypes)
-  {
-    <option value="@subtype" />
-  }
-</datalist>
+<ExcelSheetPanel Title="Сезонность" SheetName="Сезонность" ExportUrl="/api/admin/economy/season-modifiers/export"
+                 ImportFunc="ExcelImportService.ImportSeasonModifiersAsync" OnImported="ReloadAsync" />
 
 @code {
   private static readonly Season[] Seasons = [Season.Spring, Season.Summer, Season.Autumn, Season.Winter];
 
   private IReadOnlyList<SeasonModifierMatrixRow>? rows;
-  private IReadOnlyList<string> types = [];
-  private IReadOnlyList<string> subtypes = [];
-  private NewRowModel newRow = new();
-  private string? error;
 
   protected override async Task OnInitializedAsync()
   {
-    types = await CatalogReadStore.GetDistinctTypesAsync(null, CancellationToken.None);
-    subtypes = await CatalogReadStore.GetDistinctSubtypesAsync(null, CancellationToken.None);
     await ReloadAsync();
   }
 
@@ -137,26 +113,6 @@ else
     await EconomyAdminService.SetSeasonModifierAsync(type, subtype, season, coefficient, CancellationToken.None);
     await ReloadAsync();
     ToastService.ShowSuccess("Коэффициент обновлён");
-  }
-
-  private async Task AddRowAsync()
-  {
-    error = null;
-
-    if (rows is not null && rows.Any(r => r.Type == newRow.Type && r.Subtype == newRow.Subtype))
-    {
-      error = $"Строка «{newRow.Type} / {newRow.Subtype}» уже есть — отредактируйте коэффициенты прямо в таблице.";
-      return;
-    }
-
-    foreach (var season in Seasons)
-    {
-      await EconomyAdminService.SetSeasonModifierAsync(newRow.Type, newRow.Subtype, season, 1m, CancellationToken.None);
-    }
-
-    newRow = new();
-    await ReloadAsync();
-    ToastService.ShowSuccess("Строка добавлена");
   }
 
   private async Task DeleteRowAsync(string type, string subtype)
@@ -178,10 +134,4 @@ else
     Season.Winter => "Зима",
     _ => season.ToString()
   };
-
-  private sealed class NewRowModel
-  {
-    [Required] public string Type { get; set; } = "";
-    [Required] public string Subtype { get; set; } = "";
-  }
 }

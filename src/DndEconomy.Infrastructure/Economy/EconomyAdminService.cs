@@ -136,16 +136,21 @@ public sealed class EconomyAdminService : IEconomyAdminService
 
   #region Коэффициенты города/сезона
 
-  /// <inheritdoc />
-  public async Task<IReadOnlyList<TypeSubtype>> GetItemTypeSubtypesAsync(CancellationToken cancellationToken)
+  /// <summary>
+  /// Различные пары Тип+Подтип, встречающиеся у предметов каталога — основа авто-заполнения
+  /// строк матриц коэффициентов (см. GetCityModifierMatrixAsync/GetSeasonModifierMatrixAsync):
+  /// каждая такая пара получает строку в матрице, даже если для неё ещё не задан ни один
+  /// коэффициент, чтобы админ не мог забыть завести коэффициент для новой категории.
+  /// </summary>
+  private static async Task<HashSet<(string Type, string Subtype)>> GetItemTypeSubtypeSetAsync(
+    ApplicationDbContext dbContext, CancellationToken cancellationToken)
   {
-    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-    return await dbContext.Items.AsNoTracking()
+    var pairs = await dbContext.Items.AsNoTracking()
       .Select(x => new { x.Type, x.Subtype })
       .Distinct()
-      .OrderBy(x => x.Type).ThenBy(x => x.Subtype)
-      .Select(x => new TypeSubtype { Type = x.Type, Subtype = x.Subtype })
       .ToListAsync(cancellationToken);
+
+    return pairs.Select(x => (x.Type, x.Subtype)).ToHashSet();
   }
 
   /// <inheritdoc />
@@ -159,6 +164,9 @@ public sealed class EconomyAdminService : IEconomyAdminService
       .ToListAsync(cancellationToken);
 
     var modifiers = await dbContext.CityModifiers.AsNoTracking().ToListAsync(cancellationToken);
+    var modifiersByKey = modifiers.ToLookup(x => (x.Type, x.Subtype));
+
+    var itemTypeSubtypes = await GetItemTypeSubtypeSetAsync(dbContext, cancellationToken);
 
     var serviceTypeSubtypes = await dbContext.Items.AsNoTracking()
       .Where(x => x.IsService)
@@ -167,15 +175,21 @@ public sealed class EconomyAdminService : IEconomyAdminService
       .ToListAsync(cancellationToken);
     var serviceTypeSubtypeSet = serviceTypeSubtypes.Select(x => (x.Type, x.Subtype)).ToHashSet();
 
-    var rows = modifiers
-      .GroupBy(x => (x.Type, x.Subtype))
-      .OrderBy(g => g.Key.Type).ThenBy(g => g.Key.Subtype)
-      .Select(g => new CityModifierMatrixRow
+    // Строки матрицы = объединение реальных категорий предметов (чтобы админ не мог забыть
+    // завести коэффициент для новой категории) и уже существующих в БД коэффициентов
+    // (осиротевшие строки — предметов такой категории больше нет, но коэффициент остался,
+    // помечаются IsOrphan и допускают удаление, см. EconomyAdminModels.cs).
+    var allKeys = itemTypeSubtypes.Concat(modifiersByKey.Select(g => g.Key)).Distinct();
+
+    var rows = allKeys
+      .OrderBy(key => key.Type).ThenBy(key => key.Subtype)
+      .Select(key => new CityModifierMatrixRow
       {
-        Type = g.Key.Type,
-        Subtype = g.Key.Subtype,
-        CoefficientsByCityId = g.ToDictionary(x => x.CityId, x => x.Coefficient),
-        IsService = serviceTypeSubtypeSet.Contains(g.Key)
+        Type = key.Type,
+        Subtype = key.Subtype,
+        CoefficientsByCityId = modifiersByKey[key].ToDictionary(x => x.CityId, x => x.Coefficient),
+        IsService = serviceTypeSubtypeSet.Contains(key),
+        IsOrphan = !itemTypeSubtypes.Contains(key)
       })
       .ToList();
 
@@ -218,15 +232,19 @@ public sealed class EconomyAdminService : IEconomyAdminService
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
     var modifiers = await dbContext.SeasonModifiers.AsNoTracking().ToListAsync(cancellationToken);
+    var modifiersByKey = modifiers.ToLookup(x => (x.Type, x.Subtype));
 
-    return modifiers
-      .GroupBy(x => (x.Type, x.Subtype))
-      .OrderBy(g => g.Key.Type).ThenBy(g => g.Key.Subtype)
-      .Select(g => new SeasonModifierMatrixRow
+    var itemTypeSubtypes = await GetItemTypeSubtypeSetAsync(dbContext, cancellationToken);
+    var allKeys = itemTypeSubtypes.Concat(modifiersByKey.Select(g => g.Key)).Distinct();
+
+    return allKeys
+      .OrderBy(key => key.Type).ThenBy(key => key.Subtype)
+      .Select(key => new SeasonModifierMatrixRow
       {
-        Type = g.Key.Type,
-        Subtype = g.Key.Subtype,
-        CoefficientsBySeason = g.ToDictionary(x => x.Season, x => x.Coefficient)
+        Type = key.Type,
+        Subtype = key.Subtype,
+        CoefficientsBySeason = modifiersByKey[key].ToDictionary(x => x.Season, x => x.Coefficient),
+        IsOrphan = !itemTypeSubtypes.Contains(key)
       })
       .ToList();
   }
