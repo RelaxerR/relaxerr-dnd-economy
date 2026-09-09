@@ -23,6 +23,53 @@ public sealed record NewItemInput
   public bool IsService { get; init; }
 }
 
+/// <summary>Те же поля, что и <see cref="NewItemInput"/> — для редактирования уже существующего предмета.</summary>
+public sealed record UpdateItemInput
+{
+  public required string Category { get; init; }
+  public required string Type { get; init; }
+  public required string Subtype { get; init; }
+  public required string NameRu { get; init; }
+  public string? NameEn { get; init; }
+  public required decimal BaseCost { get; init; }
+  public required decimal Weight { get; init; }
+  public bool IsPlayerSuggested { get; init; }
+  public bool IsService { get; init; }
+}
+
+/// <summary>Параметры поиска для вкладки "Предметы" в админке: строка поиска + пагинация.</summary>
+public sealed record ItemAdminQuery
+{
+  public string? SearchTerm { get; init; }
+  public int PageNumber { get; init; } = 1;
+  public int PageSize { get; init; } = 20;
+}
+
+/// <summary>Одна строка списка предметов в админке — сырые поля Item, без расчёта цены (та зависит от сессии, здесь не нужна).</summary>
+public sealed record ItemAdminRow
+{
+  public required Guid ItemId { get; init; }
+  public required string Category { get; init; }
+  public required string Type { get; init; }
+  public required string Subtype { get; init; }
+  public required string NameRu { get; init; }
+  public string? NameEn { get; init; }
+  public required decimal BaseCost { get; init; }
+  public required decimal Weight { get; init; }
+  public string? ExternalUuid { get; init; }
+  public required bool IsPlayerSuggested { get; init; }
+  public required bool IsService { get; init; }
+}
+
+/// <summary>Страница результатов поиска предметов для админки.</summary>
+public sealed record ItemAdminPage
+{
+  public required IReadOnlyList<ItemAdminRow> Items { get; init; }
+  public required int TotalCount { get; init; }
+  public required int PageNumber { get; init; }
+  public required int PageSize { get; init; }
+}
+
 /// <summary>
 /// Условие отбора предметов для глобального изменения стоимости — диапазон BaseCost.
 /// Обе границы включительны; null означает отсутствие границы с этой стороны.

@@ -13,6 +13,10 @@ public sealed class ItemAdminService : IItemAdminService
 {
   #region Поля и конструктор
 
+  // Тот же порог, что и в каталоге (CatalogReadStore.WordSimilarityThreshold) — единообразная
+  // опечатко-устойчивость поиска что для игрока, что для админа.
+  private const double WordSimilarityThreshold = 0.4;
+
   private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
   private readonly IEconomyPricingReadStore _pricingReadStore;
   private readonly TimeProvider _timeProvider;
@@ -55,6 +59,83 @@ public sealed class ItemAdminService : IItemAdminService
     dbContext.Items.Add(item);
     await dbContext.SaveChangesAsync(cancellationToken);
     return item.Id;
+  }
+
+  /// <inheritdoc />
+  public async Task<ItemAdminPage> SearchItemsAsync(ItemAdminQuery query, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var term = query.SearchTerm?.Trim();
+    var hasSearch = !string.IsNullOrEmpty(term);
+
+    var items = dbContext.Items.AsNoTracking().Where(x =>
+      !hasSearch ||
+      EF.Functions.TrigramsWordSimilarity(term!, x.NameRu) >= WordSimilarityThreshold ||
+      (x.NameEn != null && EF.Functions.TrigramsWordSimilarity(term!, x.NameEn) >= WordSimilarityThreshold));
+
+    var totalCount = await items.CountAsync(cancellationToken);
+
+    var pageSize = query.PageSize;
+    var pageNumber = Math.Max(1, query.PageNumber);
+
+    var rows = await items
+      .OrderBy(x => x.NameRu)
+      .Skip((pageNumber - 1) * pageSize)
+      .Take(pageSize)
+      .Select(x => new ItemAdminRow
+      {
+        ItemId = x.Id,
+        Category = x.Category,
+        Type = x.Type,
+        Subtype = x.Subtype,
+        NameRu = x.NameRu,
+        NameEn = x.NameEn,
+        BaseCost = x.BaseCost,
+        Weight = x.Weight,
+        ExternalUuid = x.ExternalUuid,
+        IsPlayerSuggested = x.IsPlayerSuggested,
+        IsService = x.IsService
+      })
+      .ToListAsync(cancellationToken);
+
+    return new ItemAdminPage { Items = rows, TotalCount = totalCount, PageNumber = pageNumber, PageSize = pageSize };
+  }
+
+  /// <inheritdoc />
+  public async Task UpdateItemAsync(Guid itemId, UpdateItemInput input, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var item = await dbContext.Items.SingleOrDefaultAsync(x => x.Id == itemId, cancellationToken);
+    if (item is null)
+      return;
+
+    item.Category = input.Category;
+    item.Type = input.Type;
+    item.Subtype = input.Subtype;
+    item.NameRu = input.NameRu;
+    item.NameEn = input.NameEn;
+    item.BaseCost = input.BaseCost;
+    item.Weight = input.Weight;
+    item.IsPlayerSuggested = input.IsPlayerSuggested;
+    item.IsService = input.IsService;
+    item.UpdatedAtUtc = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  /// <inheritdoc />
+  public async Task DeleteItemAsync(Guid itemId, CancellationToken cancellationToken)
+  {
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+    var item = await dbContext.Items.SingleOrDefaultAsync(x => x.Id == itemId, cancellationToken);
+    if (item is null)
+      return;
+
+    dbContext.Items.Remove(item);
+    await dbContext.SaveChangesAsync(cancellationToken);
   }
 
   /// <inheritdoc />
