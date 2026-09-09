@@ -15,17 +15,20 @@ public sealed class CatalogQueryService : ICatalogQueryService
 
   private readonly ICatalogReadStore _readStore;
   private readonly IEconomyPricingReadStore _pricingReadStore;
+  private readonly ICityCoinAcceptanceReadStore _coinAcceptanceReadStore;
   private readonly TimeProvider _timeProvider;
   private readonly ILogger<CatalogQueryService> _logger;
 
   public CatalogQueryService(
     ICatalogReadStore readStore,
     IEconomyPricingReadStore pricingReadStore,
+    ICityCoinAcceptanceReadStore coinAcceptanceReadStore,
     TimeProvider timeProvider,
     ILogger<CatalogQueryService> logger)
   {
     _readStore = readStore;
     _pricingReadStore = pricingReadStore;
+    _coinAcceptanceReadStore = coinAcceptanceReadStore;
     _timeProvider = timeProvider;
     _logger = logger;
   }
@@ -47,6 +50,7 @@ public sealed class CatalogQueryService : ICatalogQueryService
       : query;
 
     var (rows, totalCount) = await _readStore.GetPageAsync(normalizedQuery, session, cancellationToken);
+    var coinAcceptance = await _coinAcceptanceReadStore.GetForCityAsync(session.CityId, cancellationToken);
 
     return new CatalogPage
     {
@@ -56,7 +60,8 @@ public sealed class CatalogQueryService : ICatalogQueryService
       PageSize = normalizedQuery.PageSize,
       ActiveSessionName = session.SessionName,
       CityName = session.CityName,
-      GameDateLabel = session.GameDateLabel
+      GameDateLabel = session.GameDateLabel,
+      CoinAcceptance = coinAcceptance
     };
   }
 

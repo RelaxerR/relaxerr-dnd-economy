@@ -1,3 +1,5 @@
+using DndEconomy.Application.Pricing;
+
 namespace DndEconomy.Application.Catalog;
 
 /// <summary>Параметры страницы каталога: фильтры, поиск, сортировка, пагинация.</summary>
@@ -70,6 +72,9 @@ public sealed class CatalogPage
   public required string CityName { get; init; }
   public required string GameDateLabel { get; init; }
 
+  /// <summary>Условия приёма номиналов монет в текущем городе. Null, если активной сессии нет.</summary>
+  public CityCoinAcceptanceInfo? CoinAcceptance { get; init; }
+
   public static CatalogPage Empty(int pageNumber, int pageSize) => new()
   {
     Items = [],
@@ -78,6 +83,7 @@ public sealed class CatalogPage
     PageSize = pageSize,
     ActiveSessionName = string.Empty,
     CityName = string.Empty,
-    GameDateLabel = string.Empty
+    GameDateLabel = string.Empty,
+    CoinAcceptance = null
   };
 }
