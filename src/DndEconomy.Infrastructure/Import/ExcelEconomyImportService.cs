@@ -517,10 +517,15 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   /// Импортирует матрицу приёма номиналов "Номинал × Город" (строка 1 — города начиная с
   /// колонки B, колонка A — подпись "Номинал"; последующие строки — 5 номиналов по
   /// отображаемому имени из <see cref="CoinDenominations.All"/>) и заметки по городам —
-  /// двухколоночную таблицу "Город"/"Заметка", идущую после матрицы (ищется по строке, где
-  /// колонка A содержит "Город", а не по фиксированному номеру строки — так формат
-  /// устойчив к лишним пустым строкам между блоками). Города не создаются этим листом —
-  /// сопоставляются по имени с уже существующими.
+  /// двухколоночную таблицу "Город"/"Заметка", идущую после матрицы (начало таблицы ищется
+  /// по строке, где колонка A содержит "Город", в ходе того же однопроходного обхода листа —
+  /// НЕ повторным запросом <c>RowsUsed().Skip(notesHeaderRow.RowNumber())</c>, как было раньше:
+  /// это теряло заметку первого города, потому что пустая строка-разделитель между матрицей
+  /// и таблицей заметок не входит в RowsUsed(), а RowNumber() — абсолютный номер строки листа,
+  /// а не порядковый номер в "сжатой" (без пустых строк) последовательности RowsUsed() — они
+  /// расходятся на количество пропущенных пустых строк перед найденной, и Skip() пропускал на
+  /// одну строку больше, чем нужно). Города не создаются этим листом — сопоставляются по имени
+  /// с уже существующими.
   /// </summary>
   private static async Task ImportCoinAcceptanceRowsAsync(
     ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
@@ -529,16 +534,36 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     var headerRow = sheet.Row(1);
     var lastColumn = sheet.LastColumnUsed()!.ColumnNumber();
 
-    IXLRow? notesHeaderRow = null;
+    var readingNotes = false;
 
     foreach (var row in sheet.RowsUsed().Skip(1))
     {
       var label = row.Cell(1).GetString().Trim();
 
-      if (label.Equals("Город", StringComparison.OrdinalIgnoreCase))
+      if (!readingNotes && label.Equals("Город", StringComparison.OrdinalIgnoreCase))
       {
-        notesHeaderRow = row;
-        break;
+        readingNotes = true;
+        continue;
+      }
+
+      if (readingNotes)
+      {
+        var cityName = row.Cell(1).GetString();
+        if (string.IsNullOrWhiteSpace(cityName))
+        {
+          continue;
+        }
+
+        if (!citiesByName.TryGetValue(cityName, out var city))
+        {
+          summary.Warnings.Add($"Заметка для города «{cityName}» пропущена — город не найден.");
+          continue;
+        }
+
+        var note = row.Cell(2).GetString();
+        city.CoinAcceptanceNote = string.IsNullOrWhiteSpace(note) ? null : note;
+        city.UpdatedAtUtc = DateTime.UtcNow;
+        continue;
       }
 
       if (!DenominationLabels.TryGetValue(label, out var denomination))
@@ -568,28 +593,6 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
         }
 
         summary.CoinAcceptancesImported++;
-      }
-    }
-
-    if (notesHeaderRow is not null)
-    {
-      foreach (var noteRow in sheet.RowsUsed().Skip(notesHeaderRow.RowNumber()))
-      {
-        var cityName = noteRow.Cell(1).GetString();
-        if (string.IsNullOrWhiteSpace(cityName))
-        {
-          continue;
-        }
-
-        if (!citiesByName.TryGetValue(cityName, out var city))
-        {
-          summary.Warnings.Add($"Заметка для города «{cityName}» пропущена — город не найден.");
-          continue;
-        }
-
-        var note = noteRow.Cell(2).GetString();
-        city.CoinAcceptanceNote = string.IsNullOrWhiteSpace(note) ? null : note;
-        city.UpdatedAtUtc = DateTime.UtcNow;
       }
     }
 
