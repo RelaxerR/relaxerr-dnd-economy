@@ -84,7 +84,7 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   #region Оркестрация импорта — одна точка входа на лист
 
   /// <inheritdoc />
-  public async Task<EconomyImportSummary> ImportItemsAsync(Stream fileStream, CancellationToken cancellationToken)
+  public async Task<EconomyImportSummary> ImportItemsAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
   {
     var summary = new EconomyImportSummary();
     using var workbook = OpenWorkbook(fileStream);
@@ -96,14 +96,15 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     }
 
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-    await ImportItemsAsync(dbContext, sheet, summary, cancellationToken);
+    await ImportItemsAsync(dbContext, sheet, replaceExisting, persist, summary, cancellationToken);
 
-    _logger.LogInformation("Импортирован лист «{Sheet}»: предметов {Items}", ItemsSheetName, summary.ItemsImported);
+    _logger.LogInformation(
+      "Импортирован лист «{Sheet}»: предметов {Items}, удалено {Removed} (persist={Persist})", ItemsSheetName, summary.ItemsImported, summary.ItemsRemoved, persist);
     return summary;
   }
 
   /// <inheritdoc />
-  public async Task<EconomyImportSummary> ImportCitiesAsync(Stream fileStream, CancellationToken cancellationToken)
+  public async Task<EconomyImportSummary> ImportCitiesAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
   {
     var summary = new EconomyImportSummary();
     using var workbook = OpenWorkbook(fileStream);
@@ -116,15 +117,16 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
     var citiesByName = await dbContext.Cities.ToDictionaryAsync(x => x.Name, cancellationToken);
-    await ImportCitiesAndModifiersAsync(dbContext, sheet, citiesByName, summary, cancellationToken);
+    await ImportCitiesAndModifiersAsync(dbContext, sheet, citiesByName, replaceExisting, persist, summary, cancellationToken);
 
     _logger.LogInformation(
-      "Импортирован лист «{Sheet}»: городов {Cities}, коэф. города {Mods}", CitiesSheetName, summary.CitiesImported, summary.CityModifiersImported);
+      "Импортирован лист «{Sheet}»: городов {Cities} (удалено {CitiesRemoved}), коэф. города {Mods} (удалено {ModsRemoved}) (persist={Persist})",
+      CitiesSheetName, summary.CitiesImported, summary.CitiesRemoved, summary.CityModifiersImported, summary.CityModifiersRemoved, persist);
     return summary;
   }
 
   /// <inheritdoc />
-  public async Task<EconomyImportSummary> ImportSeasonModifiersAsync(Stream fileStream, CancellationToken cancellationToken)
+  public async Task<EconomyImportSummary> ImportSeasonModifiersAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
   {
     var summary = new EconomyImportSummary();
     using var workbook = OpenWorkbook(fileStream);
@@ -136,14 +138,15 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     }
 
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-    await ImportSeasonModifiersAsync(dbContext, sheet, summary, cancellationToken);
+    await ImportSeasonModifiersAsync(dbContext, sheet, replaceExisting, persist, summary, cancellationToken);
 
-    _logger.LogInformation("Импортирован лист «{Sheet}»: коэф. сезона {Mods}", SeasonsSheetName, summary.SeasonModifiersImported);
+    _logger.LogInformation(
+      "Импортирован лист «{Sheet}»: коэф. сезона {Mods}, удалено {Removed} (persist={Persist})", SeasonsSheetName, summary.SeasonModifiersImported, summary.SeasonModifiersRemoved, persist);
     return summary;
   }
 
   /// <inheritdoc />
-  public async Task<EconomyImportSummary> ImportSessionsAsync(Stream fileStream, CancellationToken cancellationToken)
+  public async Task<EconomyImportSummary> ImportSessionsAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
   {
     var summary = new EconomyImportSummary();
     using var workbook = OpenWorkbook(fileStream);
@@ -156,14 +159,15 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
     var citiesByName = await dbContext.Cities.ToDictionaryAsync(x => x.Name, cancellationToken);
-    await ImportSessionsAsync(dbContext, sheet, citiesByName, summary, cancellationToken);
+    await ImportSessionsAsync(dbContext, sheet, citiesByName, replaceExisting, persist, summary, cancellationToken);
 
-    _logger.LogInformation("Импортирован лист «{Sheet}»: сессий {Sessions}", SettingsSheetName, summary.SessionsImported);
+    _logger.LogInformation(
+      "Импортирован лист «{Sheet}»: сессий {Sessions}, удалено {Removed} (persist={Persist})", SettingsSheetName, summary.SessionsImported, summary.SessionsRemoved, persist);
     return summary;
   }
 
   /// <inheritdoc />
-  public async Task<EconomyImportSummary> ImportCoinAcceptanceAsync(Stream fileStream, CancellationToken cancellationToken)
+  public async Task<EconomyImportSummary> ImportCoinAcceptanceAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
   {
     var summary = new EconomyImportSummary();
     using var workbook = OpenWorkbook(fileStream);
@@ -176,14 +180,15 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
     var citiesByName = await dbContext.Cities.ToDictionaryAsync(x => x.Name, cancellationToken);
-    await ImportCoinAcceptanceRowsAsync(dbContext, sheet, citiesByName, summary, cancellationToken);
+    await ImportCoinAcceptanceRowsAsync(dbContext, sheet, citiesByName, replaceExisting, persist, summary, cancellationToken);
 
-    _logger.LogInformation("Импортирован лист «{Sheet}»: приём монет {Count}", CoinAcceptanceSheetName, summary.CoinAcceptancesImported);
+    _logger.LogInformation(
+      "Импортирован лист «{Sheet}»: приём монет {Count}, удалено {Removed} (persist={Persist})", CoinAcceptanceSheetName, summary.CoinAcceptancesImported, summary.CoinAcceptancesRemoved, persist);
     return summary;
   }
 
   /// <inheritdoc />
-  public async Task<EconomyImportSummary> ImportQuestPayRatesAsync(Stream fileStream, CancellationToken cancellationToken)
+  public async Task<EconomyImportSummary> ImportQuestPayRatesAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
   {
     var summary = new EconomyImportSummary();
     using var workbook = OpenWorkbook(fileStream);
@@ -195,9 +200,9 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     }
 
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-    await ImportQuestPayRatesAsync(dbContext, sheet, summary, cancellationToken);
+    await ImportQuestPayRatesAsync(dbContext, sheet, persist, summary, cancellationToken);
 
-    _logger.LogInformation("Импортирован лист «{Sheet}»: заданий {Count}", QuestPayRatesSheetName, summary.QuestPayRatesImported);
+    _logger.LogInformation("Импортирован лист «{Sheet}»: заданий {Count}, удалено {Removed} (persist={Persist})", QuestPayRatesSheetName, summary.QuestPayRatesImported, summary.QuestPayRatesRemoved, persist);
     return summary;
   }
 
@@ -261,8 +266,14 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
   #region Импорт листа "Предметы"
 
-  /// <summary>Импортирует справочник предметов из листа "Предметы".</summary>
-  private static async Task ImportItemsAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, EconomyImportSummary summary, CancellationToken cancellationToken)
+  /// <summary>
+  /// Импортирует справочник предметов из листа "Предметы". При <paramref name="replaceExisting"/>
+  /// предметы, не встретившиеся в файле, удаляются (каскадно снося их из <c>UserSavedItem</c> —
+  /// избранное игроков — и обнуляя <c>ItemRequest.ResultingItemId</c>, та же механика, что и у
+  /// ручного удаления одного предмета на /admin/items).
+  /// </summary>
+  private static async Task ImportItemsAsync(
+    ApplicationDbContext dbContext, IXLWorksheet sheet, bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
     // GetString() у пустой ячейки возвращает "", а не null — раньше это попадало в словарь как
     // ключ ExternalUuid == "" для КАЖДОГО предмета без UUID (их в исходнике большинство). Пустая
@@ -283,6 +294,8 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     var existingByComposite = allItems
       .GroupBy(x => (x.Category, x.Type, x.Subtype, x.NameRu))
       .ToDictionary(g => g.Key, g => g.First());
+
+    var touchedIds = new HashSet<Guid>();
 
     foreach (var row in sheet.RowsUsed().Skip(1))
     {
@@ -329,10 +342,24 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
         dbContext.Items.Add(item);
       }
 
+      touchedIds.Add(item.Id);
       summary.ItemsImported++;
     }
 
-    await dbContext.SaveChangesAsync(cancellationToken);
+    if (replaceExisting)
+    {
+      var toRemove = allItems.Where(x => !touchedIds.Contains(x.Id)).ToList();
+      summary.ItemsRemoved = toRemove.Count;
+      if (persist)
+      {
+        dbContext.Items.RemoveRange(toRemove);
+      }
+    }
+
+    if (persist)
+    {
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
   }
 
   /// <summary>Разбивает строку вида "Название [English]" на русскую и английскую части.</summary>
@@ -353,25 +380,40 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   /// Новые/существующие города добавляются в переданный словарь Имя города → сущность.
   /// </summary>
   private static async Task ImportCitiesAndModifiersAsync(
-    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
+    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName,
+    bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
-    await ResolveOrCreateCitiesAsync(dbContext, sheet, citiesByName, summary, cancellationToken);
-    await ImportCityModifierRowsAsync(dbContext, sheet, citiesByName, summary, cancellationToken);
+    await ResolveOrCreateCitiesAsync(dbContext, sheet, citiesByName, replaceExisting, persist, summary, cancellationToken);
+    await ImportCityModifierRowsAsync(dbContext, sheet, citiesByName, replaceExisting, persist, summary, cancellationToken);
   }
 
-  /// <summary>Читает названия городов из строки 1 и их размер из строки 2, создаёт недостающие City.</summary>
+  /// <summary>
+  /// Читает названия городов из строки 1 и их размер из строки 2, создаёт недостающие City.
+  /// При <paramref name="replaceExisting"/> города, не встретившиеся в шапке, удаляются —
+  /// каскадно снося их же CityModifier/CityCoinAcceptance (настроено на уровне схемы БД) и
+  /// обнуляя CityId у сессий, где стоял этот город.
+  /// </summary>
   private static async Task ResolveOrCreateCitiesAsync(
-    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
+    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName,
+    bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
     var headerRow = sheet.Row(1);
     var sizeRow = sheet.Row(2);
     var lastColumn = sheet.LastColumnUsed()!.ColumnNumber();
+    var touchedNames = new HashSet<string>();
 
     // Города начинаются с колонки C (1=Тип, 2=Подтип).
     for (var column = 3; column <= lastColumn; column++)
     {
       var cityName = headerRow.Cell(column).GetString();
-      if (string.IsNullOrWhiteSpace(cityName) || citiesByName.ContainsKey(cityName))
+      if (string.IsNullOrWhiteSpace(cityName))
+      {
+        continue;
+      }
+
+      touchedNames.Add(cityName);
+
+      if (citiesByName.ContainsKey(cityName))
       {
         continue;
       }
@@ -388,16 +430,35 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
       summary.CitiesImported++;
     }
 
-    await dbContext.SaveChangesAsync(cancellationToken);
+    if (replaceExisting)
+    {
+      var toRemove = citiesByName.Values.Where(x => !touchedNames.Contains(x.Name)).ToList();
+      summary.CitiesRemoved = toRemove.Count;
+      if (persist)
+      {
+        dbContext.Cities.RemoveRange(toRemove);
+      }
+    }
+
+    if (persist)
+    {
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
   }
 
-  /// <summary>Читает строки 3+ (Тип, Подтип, коэффициент по каждому городу) и наполняет CityModifier.</summary>
+  /// <summary>
+  /// Читает строки 3+ (Тип, Подтип, коэффициент по каждому городу) и наполняет CityModifier.
+  /// При <paramref name="replaceExisting"/> строки матрицы, не встретившиеся в файле, удаляются
+  /// (коэффициент такой пары Тип+Подтип+Город просто вернётся к дефолту 1 — см. <c>AdminCityModifiers.razor</c>).
+  /// </summary>
   private static async Task ImportCityModifierRowsAsync(
-    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
+    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName,
+    bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
     var existingModifiers = await dbContext.CityModifiers.ToListAsync(cancellationToken);
     var headerRow = sheet.Row(1);
     var lastColumn = sheet.LastColumnUsed()!.ColumnNumber();
+    var touchedIds = new HashSet<Guid>();
 
     foreach (var row in sheet.RowsUsed().Skip(2))
     {
@@ -424,34 +485,55 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
         {
           existing.Coefficient = coefficient;
           existing.UpdatedAtUtc = DateTime.UtcNow;
+          touchedIds.Add(existing.Id);
         }
         else
         {
-          dbContext.CityModifiers.Add(new CityModifier
+          var modifier = new CityModifier
           {
             Type = type,
             Subtype = subtype,
             CityId = city.Id,
             Coefficient = coefficient
-          });
+          };
+          dbContext.CityModifiers.Add(modifier);
+          touchedIds.Add(modifier.Id);
         }
 
         summary.CityModifiersImported++;
       }
     }
 
-    await dbContext.SaveChangesAsync(cancellationToken);
+    if (replaceExisting)
+    {
+      var toRemove = existingModifiers.Where(x => !touchedIds.Contains(x.Id)).ToList();
+      summary.CityModifiersRemoved = toRemove.Count;
+      if (persist)
+      {
+        dbContext.CityModifiers.RemoveRange(toRemove);
+      }
+    }
+
+    if (persist)
+    {
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
   }
 
   #endregion
 
   #region Импорт листа "Сезонность"
 
-  /// <summary>Импортирует матрицу коэффициентов "Тип+Подтип × Сезон".</summary>
-  private static async Task ImportSeasonModifiersAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, EconomyImportSummary summary, CancellationToken cancellationToken)
+  /// <summary>
+  /// Импортирует матрицу коэффициентов "Тип+Подтип × Сезон". При <paramref name="replaceExisting"/>
+  /// строки, не встретившиеся в файле, удаляются (коэффициент вернётся к дефолту 1).
+  /// </summary>
+  private static async Task ImportSeasonModifiersAsync(
+    ApplicationDbContext dbContext, IXLWorksheet sheet, bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
     var headerRow = sheet.Row(1);
     var existingModifiers = await dbContext.SeasonModifiers.ToListAsync(cancellationToken);
+    var touchedIds = new HashSet<Guid>();
 
     foreach (var row in sheet.RowsUsed().Skip(1))
     {
@@ -479,34 +561,57 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
         {
           existing.Coefficient = coefficient;
           existing.UpdatedAtUtc = DateTime.UtcNow;
+          touchedIds.Add(existing.Id);
         }
         else
         {
-          dbContext.SeasonModifiers.Add(new SeasonModifier
+          var modifier = new SeasonModifier
           {
             Type = type,
             Subtype = subtype,
             Season = season,
             Coefficient = coefficient
-          });
+          };
+          dbContext.SeasonModifiers.Add(modifier);
+          touchedIds.Add(modifier.Id);
         }
 
         summary.SeasonModifiersImported++;
       }
     }
 
-    await dbContext.SaveChangesAsync(cancellationToken);
+    if (replaceExisting)
+    {
+      var toRemove = existingModifiers.Where(x => !touchedIds.Contains(x.Id)).ToList();
+      summary.SeasonModifiersRemoved = toRemove.Count;
+      if (persist)
+      {
+        dbContext.SeasonModifiers.RemoveRange(toRemove);
+      }
+    }
+
+    if (persist)
+    {
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
   }
 
   #endregion
 
   #region Импорт листа "Настройки"
 
-  /// <summary>Импортирует игровые сессии ("Партии") из листа "Настройки".</summary>
+  /// <summary>
+  /// Импортирует игровые сессии ("Партии") из листа "Настройки". При <paramref name="replaceExisting"/>
+  /// сессии, не встретившиеся в файле, удаляются безвозвратно — если среди них окажется текущая
+  /// закреплённая/активная сессия, каталог у игроков сразу переключится на следующую по дате
+  /// (или на "Нет в наличии" везде, если сессий не останется совсем).
+  /// </summary>
   private static async Task ImportSessionsAsync(
-    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
+    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName,
+    bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
     var existingSessions = await dbContext.EconomySessions.ToDictionaryAsync(x => x.Name, cancellationToken);
+    var touchedNames = new HashSet<string>();
 
     foreach (var row in sheet.RowsUsed().Skip(1))
     {
@@ -540,10 +645,24 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
         dbContext.EconomySessions.Add(session);
       }
 
+      touchedNames.Add(name);
       summary.SessionsImported++;
     }
 
-    await dbContext.SaveChangesAsync(cancellationToken);
+    if (replaceExisting)
+    {
+      var toRemove = existingSessions.Values.Where(x => !touchedNames.Contains(x.Name)).ToList();
+      summary.SessionsRemoved = toRemove.Count;
+      if (persist)
+      {
+        dbContext.EconomySessions.RemoveRange(toRemove);
+      }
+    }
+
+    if (persist)
+    {
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
   }
 
   #endregion
@@ -562,14 +681,19 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   /// а не порядковый номер в "сжатой" (без пустых строк) последовательности RowsUsed() — они
   /// расходятся на количество пропущенных пустых строк перед найденной, и Skip() пропускал на
   /// одну строку больше, чем нужно). Города не создаются этим листом — сопоставляются по имени
-  /// с уже существующими.
+  /// с уже существующими. При <paramref name="replaceExisting"/> удаляются строки матрицы
+  /// (пары Номинал+Город), не встретившиеся в файле — доля приёма вернётся к дефолту 1. Заметки
+  /// по городам (<c>City.CoinAcceptanceNote</c>) полная замена не трогает — это не строка этой
+  /// таблицы, а поле города.
   /// </summary>
   private static async Task ImportCoinAcceptanceRowsAsync(
-    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName, EconomyImportSummary summary, CancellationToken cancellationToken)
+    ApplicationDbContext dbContext, IXLWorksheet sheet, Dictionary<string, City> citiesByName,
+    bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
     var existingAcceptances = await dbContext.CityCoinAcceptances.ToListAsync(cancellationToken);
     var headerRow = sheet.Row(1);
     var lastColumn = sheet.LastColumnUsed()!.ColumnNumber();
+    var touchedIds = new HashSet<Guid>();
 
     var readingNotes = false;
 
@@ -623,17 +747,33 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
         {
           existing.AcceptanceRate = rate;
           existing.UpdatedAtUtc = DateTime.UtcNow;
+          touchedIds.Add(existing.Id);
         }
         else
         {
-          dbContext.CityCoinAcceptances.Add(new CityCoinAcceptance { Denomination = denomination, CityId = city.Id, AcceptanceRate = rate });
+          var acceptance = new CityCoinAcceptance { Denomination = denomination, CityId = city.Id, AcceptanceRate = rate };
+          dbContext.CityCoinAcceptances.Add(acceptance);
+          touchedIds.Add(acceptance.Id);
         }
 
         summary.CoinAcceptancesImported++;
       }
     }
 
-    await dbContext.SaveChangesAsync(cancellationToken);
+    if (replaceExisting)
+    {
+      var toRemove = existingAcceptances.Where(x => !touchedIds.Contains(x.Id)).ToList();
+      summary.CoinAcceptancesRemoved = toRemove.Count;
+      if (persist)
+      {
+        dbContext.CityCoinAcceptances.RemoveRange(toRemove);
+      }
+    }
+
+    if (persist)
+    {
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
   }
 
   #endregion
@@ -643,10 +783,11 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   /// <summary>
   /// Импортирует справочник оплаты заданий. В отличие от остальных листов у строк нет
   /// естественного ключа (несколько заданий одной Категории+Опасности+Эпохи — обычное дело,
-  /// это не матрица коэффициентов), поэтому загрузка полностью заменяет текущее содержимое
-  /// таблицы содержимым листа, а не обновляет по ключу.
+  /// это не матрица коэффициентов), поэтому загрузка всегда полностью заменяет текущее
+  /// содержимое таблицы содержимым листа, а не обновляет по ключу (нет параметра
+  /// <c>replaceExisting</c> — это единственный лист, где полная замена не опциональна).
   /// </summary>
-  private static async Task ImportQuestPayRatesAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, EconomyImportSummary summary, CancellationToken cancellationToken)
+  private static async Task ImportQuestPayRatesAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
     var newRates = new List<QuestPayRate>();
 
@@ -682,9 +823,14 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     }
 
     var existingRates = await dbContext.QuestPayRates.ToListAsync(cancellationToken);
-    dbContext.QuestPayRates.RemoveRange(existingRates);
-    dbContext.QuestPayRates.AddRange(newRates);
-    await dbContext.SaveChangesAsync(cancellationToken);
+    summary.QuestPayRatesRemoved = existingRates.Count;
+
+    if (persist)
+    {
+      dbContext.QuestPayRates.RemoveRange(existingRates);
+      dbContext.QuestPayRates.AddRange(newRates);
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
   }
 
   #endregion

@@ -158,7 +158,7 @@ else
 }
 
 <ExcelSheetPanel Title="Оплата заданий" SheetName="Оплата заданий" ExportUrl="/api/admin/quest-pay/export"
-                 ImportFunc="ExcelImportService.ImportQuestPayRatesAsync" OnImported="ReloadAsync" />
+                 ImportFunc="ExcelImportService.ImportQuestPayRatesAsync" OnImported="ReloadAsync" AlwaysReplaces="true" />
 
 @code {
   private static readonly QuestEpoch[] EpochOrder = [QuestEpoch.I, QuestEpoch.II, QuestEpoch.III, QuestEpoch.IV];

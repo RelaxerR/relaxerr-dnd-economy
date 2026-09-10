@@ -1,5 +1,6 @@
 @using DndEconomy.Application.Import
 @inject ToastService ToastService
+@inject IJSRuntime JSRuntime
 
 <section class="auth-card">
   <h2>Excel — @Title</h2>
@@ -12,7 +13,24 @@
     же файл, что использует другая страница) игнорируются.
   </p>
 
-  <InputFile OnChange="OnFileSelectedAsync" />
+  @if (AlwaysReplaces)
+  {
+    <p class="catalog-meta">
+      ⚠ Этот лист всегда загружается полной заменой — записи, которых нет в файле, будут
+      удалены безвозвратно.
+    </p>
+  }
+  else
+  {
+    <div class="form-field form-field--checkbox">
+      <label>
+        <input type="checkbox" @bind="replaceExisting" disabled="@isImporting" />
+        Полностью заменить (удалить из БД то, чего нет в файле)
+      </label>
+    </div>
+  }
+
+  <InputFile OnChange="OnFileSelectedAsync" disabled="@isImporting" />
 
   @if (isImporting)
   {
@@ -28,6 +46,11 @@
         <p>⚠ @warning</p>
       }
     </div>
+  }
+
+  @if (cancelledMessage is not null)
+  {
+    <div class="status-message">@cancelledMessage</div>
   }
 
   @if (error is not null)
@@ -46,19 +69,33 @@
   /// <summary>Ссылка на GET-эндпоинт, отдающий текущее состояние в виде .xlsx.</summary>
   [Parameter, EditorRequired] public string ExportUrl { get; set; } = "";
 
-  /// <summary>Метод сервиса импорта, читающий из загруженного файла только свой лист.</summary>
-  [Parameter, EditorRequired] public Func<Stream, CancellationToken, Task<EconomyImportSummary>> ImportFunc { get; set; } = default!;
+  /// <summary>
+  /// Метод сервиса импорта, читающий из загруженного файла только свой лист.
+  /// Аргументы: поток файла, «полностью заменить», «сохранить в БД» (false — только посчитать,
+  /// не записывая — используется для предпросмотра числа удаляемых записей перед подтверждением).
+  /// </summary>
+  [Parameter, EditorRequired] public Func<Stream, bool, bool, CancellationToken, Task<EconomyImportSummary>> ImportFunc { get; set; } = default!;
+
+  /// <summary>
+  /// Лист всегда полностью заменяется при загрузке (например, "Оплата заданий" — там нет
+  /// естественного ключа записи) — чекбокс не показывается, вместо него статичное предупреждение,
+  /// но confirm-диалог с числом удаляемых записей перед загрузкой всё равно показывается.
+  /// </summary>
+  [Parameter] public bool AlwaysReplaces { get; set; }
 
   /// <summary>Вызывается после успешного импорта — странице нужно перечитать свои данные.</summary>
   [Parameter] public EventCallback OnImported { get; set; }
 
+  private bool replaceExisting;
   private bool isImporting;
   private EconomyImportSummary? summary;
+  private string? cancelledMessage;
   private string? error;
 
   private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
   {
     summary = null;
+    cancelledMessage = null;
     error = null;
     isImporting = true;
 
@@ -71,7 +108,30 @@
       await browserStream.CopyToAsync(seekableStream);
       seekableStream.Position = 0;
 
-      summary = await ImportFunc(seekableStream, CancellationToken.None);
+      var wantsReplace = AlwaysReplaces || replaceExisting;
+
+      if (wantsReplace)
+      {
+        // Предпросмотр — тот же разбор файла, но persist:false, ничего не пишет в БД. Число
+        // удаляемых записей показываем в confirm ДО реального запуска, а не постфактум.
+        var preview = await ImportFunc(seekableStream, true, false, CancellationToken.None);
+        seekableStream.Position = 0;
+
+        if (preview.TotalRemoved > 0)
+        {
+          var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
+            $"Полная замена листа «{SheetName}»: будет удалено записей — {preview.TotalRemoved}. " +
+            "Это те записи, которых нет в загружаемом файле. Действие необратимо. Продолжить?");
+
+          if (!confirmed)
+          {
+            cancelledMessage = "Импорт отменён — в БД ничего не изменилось.";
+            return;
+          }
+        }
+      }
+
+      summary = await ImportFunc(seekableStream, wantsReplace, true, CancellationToken.None);
 
       if (summary.Warnings.Count == 0)
       {
@@ -104,8 +164,26 @@
     if (s.CoinAcceptancesImported > 0) parts.Add($"приём монет: {s.CoinAcceptancesImported}");
     if (s.QuestPayRatesImported > 0) parts.Add($"заданий: {s.QuestPayRatesImported}");
 
-    return parts.Count > 0
-      ? $"Импортировано — {string.Join(", ", parts)}."
-      : "Импорт завершён, но в файле не найдено ни одной строки для загрузки.";
+    var removedParts = new List<string>();
+    if (s.ItemsRemoved > 0) removedParts.Add($"предметов: {s.ItemsRemoved}");
+    if (s.CitiesRemoved > 0) removedParts.Add($"городов: {s.CitiesRemoved}");
+    if (s.CityModifiersRemoved > 0) removedParts.Add($"коэф. города: {s.CityModifiersRemoved}");
+    if (s.SeasonModifiersRemoved > 0) removedParts.Add($"коэф. сезона: {s.SeasonModifiersRemoved}");
+    if (s.SessionsRemoved > 0) removedParts.Add($"сессий: {s.SessionsRemoved}");
+    if (s.CoinAcceptancesRemoved > 0) removedParts.Add($"приём монет: {s.CoinAcceptancesRemoved}");
+    if (s.QuestPayRatesRemoved > 0) removedParts.Add($"заданий: {s.QuestPayRatesRemoved}");
+
+    if (parts.Count == 0 && removedParts.Count == 0)
+    {
+      return "Импорт завершён, но в файле не найдено ни одной строки для загрузки.";
+    }
+
+    var result = parts.Count > 0 ? $"Импортировано — {string.Join(", ", parts)}." : "Импортировано — 0 записей.";
+    if (removedParts.Count > 0)
+    {
+      result += $" Удалено (полная замена) — {string.Join(", ", removedParts)}.";
+    }
+
+    return result;
   }
 }
