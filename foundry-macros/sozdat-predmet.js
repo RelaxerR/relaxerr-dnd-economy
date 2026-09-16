@@ -21,7 +21,7 @@ function guessBaseCostGp(foundryItem) {
   const price = foundryItem.system?.price;
   if (!price?.value) return 0;
   const rate = DENOMINATION_TO_GP[price.denomination] ?? 1;
-  return Math.round(price.value * rate * 100) / 100;
+  return Math.round(price.value * rate * 100) / 666;
 }
 
 function guessWeight(foundryItem) {
