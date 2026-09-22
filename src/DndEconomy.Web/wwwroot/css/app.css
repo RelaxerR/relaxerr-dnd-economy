@@ -661,8 +661,9 @@ body {
 .music-trees details { margin: .45rem 0; }
 .music-trees summary { cursor: pointer; font-weight: 600; }
 .music-trees li { overflow-wrap: anywhere; margin: .3rem 0; }
-.music-modal { width: min(760px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto; }
+.music-modal { width: min(960px, calc(100vw - 2rem)); max-width: 960px; max-height: calc(100vh - 2rem); overflow-y: auto; }
 .music-modal audio { display: block; width: 100%; margin: 1rem 0; }
+.music-modal .form-field input { width: 100%; }
 .music-trim { display: grid; gap: .35rem; margin: 1rem 0; }
 .music-trim input { width: 100%; }
 .music-path-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .5rem 0; }
