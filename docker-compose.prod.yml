@@ -25,6 +25,11 @@ services:
       AdminSeed__Password: ${ADMIN_SEED_PASSWORD}
       MacroApi__PlayerKey: ${MACRO_API_PLAYER_KEY}
       MacroApi__AdminKey: ${MACRO_API_ADMIN_KEY}
+      MusicReview__SourcePath: /music/source
+      MusicReview__DestinationPath: /music/clean
+    volumes:
+      - ${MUSIC_SOURCE_PATH:?Set MUSIC_SOURCE_PATH}:/music/source
+      - ${MUSIC_DESTINATION_PATH:?Set MUSIC_DESTINATION_PATH}:/music/clean
     ports:
       - "127.0.0.1:5041:8080"
     networks:

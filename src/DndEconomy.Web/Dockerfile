@@ -12,6 +12,7 @@ COPY src/ src/
 RUN dotnet publish src/DndEconomy.Web/DndEconomy.Web.csproj -c Release -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app .
 USER $APP_UID

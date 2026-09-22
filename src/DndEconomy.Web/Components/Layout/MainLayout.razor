@@ -23,6 +23,7 @@
           @if (context.User.IsInRole(RoleNames.Admin))
           {
             <a href="/admin/requests">Админка</a>
+            <a href="/admin/music">Музыка</a>
           }
           <span class="app-header__user">@context.User.Identity?.Name</span>
           <form action="Account/Logout" method="post" @formname="logout">
