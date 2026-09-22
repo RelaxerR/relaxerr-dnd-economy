@@ -656,6 +656,10 @@ body {
 
 /* Разбор музыки */
 .music-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.5rem 0; }
+.music-progress { margin-top: 1.5rem; }
+.music-progress--modal { margin: .75rem 0 1rem; padding: 0; box-shadow: none; }
+.music-progress__header { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: .5rem; }
+.music-progress progress { display: block; width: 100%; height: .75rem; accent-color: var(--color-accent); }
 .music-trees { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
 .music-trees .auth-card { min-width: 0; max-height: 38rem; overflow: auto; }
 .music-trees details { margin: .45rem 0; }
@@ -670,10 +674,15 @@ body {
 .music-path-part { flex: 1 1 9rem; }
 .music-path-part input { width: 100%; min-width: 0; }
 .music-error { color: #a52929; margin: .5rem 0; }
+.music-folders { margin-top: 1.25rem; }
+.music-folder-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .5rem; padding: .6rem 0; border-bottom: 1px solid rgba(0, 0, 0, .08); }
+.music-folder-row:last-child { border-bottom: 0; }
+.music-folder-row code { overflow-wrap: anywhere; }
+.music-folder-row .modal-card__delete { margin-left: 0; }
 .music-loading { display: flex; align-items: center; justify-content: center; gap: 1rem; min-height: 12rem; color: #6e6e73; }
 .music-buffering { display: flex; align-items: center; gap: .5rem; margin: -.4rem 0 1rem; font-size: .9rem; color: #6e6e73; }
 .music-spinner { display: inline-block; flex: none; width: 1.75rem; height: 1.75rem; border: 3px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: music-spin .8s linear infinite; }
 .music-spinner--small { width: 1rem; height: 1rem; border-width: 2px; vertical-align: -.15em; margin-right: .3rem; }
 @keyframes music-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .music-spinner { animation: none; } }
-@media (max-width: 700px) { .music-trees { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .music-trees { grid-template-columns: 1fr; } .music-folder-row { grid-template-columns: 1fr 1fr; } .music-folder-row code { grid-column: 1 / -1; } }

@@ -214,6 +214,66 @@ public sealed class MusicReviewService(IOptions<MusicReviewOptions> options, ILo
     finally { gate.Release(); }
   }
 
+  public bool FolderExists(string folder)
+  {
+    var path = GetFolderPath(folder);
+    return Directory.Exists(path) && !IsLink(path);
+  }
+
+  public async Task RenameFolderAsync(string folder, string newName, bool merge, CancellationToken cancellationToken)
+  {
+    await gate.WaitAsync(cancellationToken);
+    try
+    {
+      var current = GetFolderPath(folder);
+      if (!Directory.Exists(current) || IsLink(current)) throw new DirectoryNotFoundException("Папка не найдена.");
+      var normalizedName = NormalizeName(newName);
+      if (ValidateName(normalizedName) is { } error) throw new InvalidOperationException(error);
+      if (normalizedName == "все") throw new InvalidOperationException("Папка «все» зарезервирована.");
+      var target = Path.Combine(Path.GetDirectoryName(current)!, normalizedName);
+      if (Path.GetFullPath(target) == current) return;
+      if (!Directory.Exists(target))
+      {
+        Directory.Move(current, target);
+        return;
+      }
+      if (!merge) throw new InvalidOperationException("Папка с таким названием уже существует.");
+      MergeFolders(current, target);
+    }
+    finally { gate.Release(); }
+  }
+
+  public async Task<int> DeleteFolderAndReturnTracksAsync(string folder, CancellationToken cancellationToken)
+  {
+    await gate.WaitAsync(cancellationToken);
+    try
+    {
+      var folderPath = GetFolderPath(folder);
+      if (!Directory.Exists(folderPath) || IsLink(folderPath)) throw new DirectoryNotFoundException("Папка не найдена.");
+      var all = Path.GetFullPath(Path.Combine(destination, "все"));
+      var tracks = Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories)
+        .Where(IsLink)
+        .Select(p => new FileInfo(p).ResolveLinkTarget(true)?.FullName)
+        .Where(p => p is not null && p.StartsWith(all + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        .Cast<string>().Distinct(StringComparer.Ordinal).ToArray();
+      var returns = tracks.Select(track => (Track: track, Target: Path.Combine(source, Path.GetFileName(track)))).ToArray();
+      foreach (var item in returns)
+        if (File.Exists(item.Target) || Directory.Exists(item.Target))
+          throw new InvalidOperationException($"Нельзя вернуть трек: в исходной папке уже есть {Path.GetFileName(item.Target)}.");
+
+      var allLinks = Directory.EnumerateFiles(destination, "*", SearchOption.AllDirectories)
+        .Where(IsLink)
+        .Select(p => (Link: p, Target: new FileInfo(p).ResolveLinkTarget(true)?.FullName))
+        .Where(x => x.Target is not null && tracks.Contains(x.Target, StringComparer.Ordinal)).ToArray();
+      foreach (var link in allLinks) File.Delete(link.Link);
+      foreach (var item in returns) File.Move(item.Track, item.Target);
+      if (Directory.Exists(folderPath)) Directory.Delete(folderPath, true);
+      RemoveEmptyFolders(destination, all);
+      return returns.Length;
+    }
+    finally { gate.Release(); }
+  }
+
   public string ValidateTrack(MusicTrack track)
   {
     EnsureConfigured();
@@ -231,6 +291,47 @@ public sealed class MusicReviewService(IOptions<MusicReviewOptions> options, ILo
       current = Path.GetDirectoryName(current)!)
       if (Directory.Exists(current) && IsLink(current))
         throw new InvalidOperationException("Ссылки на каталоги назначения не поддерживаются.");
+  }
+
+  private string GetFolderPath(string folder)
+  {
+    EnsureConfigured();
+    var normalized = folder.Replace('/', Path.DirectorySeparatorChar);
+    var path = Path.GetFullPath(Path.Combine(destination, normalized));
+    if (!path.StartsWith(destination + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+      || path == Path.Combine(destination, "все")
+      || path.StartsWith(Path.Combine(destination, "все") + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+      throw new InvalidOperationException("Недопустимый путь папки.");
+    return path;
+  }
+
+  private static void MergeFolders(string sourceFolder, string targetFolder)
+  {
+    foreach (var sourceFile in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
+    {
+      var relative = Path.GetRelativePath(sourceFolder, sourceFile);
+      var targetFile = Path.Combine(targetFolder, relative);
+      if (!File.Exists(targetFile)) continue;
+      var sameLink = IsLink(sourceFile) && IsLink(targetFile)
+        && new FileInfo(sourceFile).ResolveLinkTarget(true)?.FullName == new FileInfo(targetFile).ResolveLinkTarget(true)?.FullName;
+      if (!sameLink) throw new InvalidOperationException($"Нельзя объединить папки: файл {relative} уже существует.");
+    }
+    foreach (var directory in Directory.EnumerateDirectories(sourceFolder, "*", SearchOption.AllDirectories))
+      Directory.CreateDirectory(Path.Combine(targetFolder, Path.GetRelativePath(sourceFolder, directory)));
+    foreach (var sourceFile in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
+    {
+      var targetFile = Path.Combine(targetFolder, Path.GetRelativePath(sourceFolder, sourceFile));
+      if (File.Exists(targetFile)) File.Delete(sourceFile);
+      else File.Move(sourceFile, targetFile);
+    }
+    Directory.Delete(sourceFolder, true);
+  }
+
+  private static void RemoveEmptyFolders(string root, string preserved)
+  {
+    foreach (var directory in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
+      .OrderByDescending(p => p.Length))
+      if (Path.GetFullPath(directory) != preserved && !Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
   }
 
   private static bool IsLink(string path) => (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;

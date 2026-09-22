@@ -20,6 +20,10 @@ else if (error is not null)
 
 @if (library is not null)
 {
+  <section class="music-progress auth-card">
+    <div class="music-progress__header"><strong>Разобрано @ProgressPercent%</strong><span>@library.Destination.Count из @TotalTracks</span></div>
+    <progress max="100" value="@ProgressPercent">@ProgressPercent%</progress>
+  </section>
   <div class="music-toolbar">
     <div><strong>@library.Source.Count</strong> осталось разобрать · <strong>@library.Destination.Count</strong> в папке «все»</div>
     <button class="btn btn--primary" @onclick="NextAsync" disabled="@(busy || library.Source.Count == 0)">
@@ -31,6 +35,24 @@ else if (error is not null)
     <section class="auth-card"><h2>Неразобранные</h2>@Tree(library.Source)</section>
     <section class="auth-card"><h2>Распределённые</h2>@Tree(library.Destination)</section>
   </div>
+  <section class="auth-card music-folders">
+    <h2>Созданные папки</h2>
+    @if (library.Folders.Count == 0)
+    {
+      <p class="catalog-meta">Папок пока нет.</p>
+    }
+    else
+    {
+      @foreach (var folder in library.Folders)
+      {
+        <div class="music-folder-row">
+          <code>@folder</code>
+          <button class="btn" @onclick="() => BeginRename(folder)">Переименовать</button>
+          <button class="btn modal-card__delete" @onclick="() => DeleteFolderAsync(folder)">Удалить</button>
+        </div>
+      }
+    }
+  </section>
 }
 
 @if (current is not null)
@@ -39,6 +61,13 @@ else if (error is not null)
     <div class="modal-card music-modal">
       <h2>@current.Name</h2>
       <p class="catalog-meta">@(current.Reviewed ? "Повторное прослушивание · существующие папки сохранятся" : "Новый трек")</p>
+      @if (library is not null)
+      {
+        <div class="music-progress music-progress--modal">
+          <div class="music-progress__header"><strong>Разобрано @ProgressPercent%</strong><span>@library.Destination.Count из @TotalTracks</span></div>
+          <progress max="100" value="@ProgressPercent">@ProgressPercent%</progress>
+        </div>
+      }
       @if (busy)
       {
         <div class="music-loading" role="status" aria-live="polite">
@@ -100,6 +129,37 @@ else if (error is not null)
   </div>
 }
 
+@if (renamingFolder is not null && mergeFolder is null)
+{
+  <div class="modal-backdrop" @onclick="CancelRename">
+    <div class="modal-card" @onclick:stopPropagation="true">
+      <h2>Переименовать папку</h2>
+      <p class="catalog-meta">@renamingFolder</p>
+      <div class="form-field"><label>Новое название</label><input @bind="folderName" /></div>
+      @if (folderActionError is not null) { <p class="music-error">@folderActionError</p> }
+      <div class="modal-card__actions">
+        <button class="btn btn--primary" @onclick="RenameFolderAsync">Сохранить</button>
+        <button class="btn" @onclick="CancelRename">Отмена</button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (mergeFolder is not null)
+{
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Папка уже существует</h2>
+      <p>Объединить «@renamingFolder» с «@mergeFolder»? Ссылки из обеих папок будут сохранены.</p>
+      @if (folderActionError is not null) { <p class="music-error">@folderActionError</p> }
+      <div class="modal-card__actions">
+        <button class="btn btn--primary" @onclick="MergeFolderAsync">Объединить</button>
+        <button class="btn" @onclick="CancelMerge">Отмена</button>
+      </div>
+    </div>
+  </div>
+}
+
 @code {
   private MusicLibrary? library;
   private MusicTrack? current;
@@ -107,6 +167,8 @@ else if (error is not null)
   private readonly List<PathRow> rows = [];
   private string name = "", previewUrl = "";
   private string? error, actionError;
+  private string? renamingFolder, mergeFolder, folderActionError;
+  private string folderName = "";
   private string busyLabel = "Подготавливаем трек...";
   private bool busy, shouldPlay, audioBuffering;
   private double start, end, duration;
@@ -123,6 +185,8 @@ else if (error is not null)
   }
 
   private string? NameError => current is null ? null : Music.CheckCollision(current, name);
+  private int TotalTracks => (library?.Source.Count ?? 0) + (library?.Destination.Count ?? 0);
+  private int ProgressPercent => TotalTracks == 0 ? 100 : (int)Math.Round((library?.Destination.Count ?? 0) * 100d / TotalTracks);
 
   protected override Task OnInitializedAsync() { Refresh(); return Task.CompletedTask; }
 
@@ -238,6 +302,83 @@ else if (error is not null)
   {
     var path = string.Join('/', row.Parts.Where(p => p.Length > 0));
     return path.Length == 0 ? null : MusicReviewService.ValidateFolder(path);
+  }
+
+  private void BeginRename(string folder)
+  {
+    renamingFolder = folder;
+    folderName = Path.GetFileName(folder);
+    folderActionError = null;
+  }
+
+  private async Task RenameFolderAsync()
+  {
+    if (renamingFolder is null) return;
+    folderName = MusicReviewService.NormalizeName(folderName);
+    if (MusicReviewService.ValidateName(folderName) is { } validationError)
+    {
+      folderActionError = validationError;
+      return;
+    }
+    var parent = Path.GetDirectoryName(renamingFolder)?.Replace('\\', '/');
+    var target = string.IsNullOrEmpty(parent) ? folderName : $"{parent}/{folderName}";
+    if (string.Equals(target, renamingFolder.Replace('\\', '/'), StringComparison.Ordinal))
+    {
+      CancelRename();
+      return;
+    }
+    if (Music.FolderExists(target))
+    {
+      mergeFolder = target;
+      return;
+    }
+    try
+    {
+      await Music.RenameFolderAsync(renamingFolder, folderName, false, CancellationToken.None);
+      CancelRename();
+      Refresh();
+    }
+    catch (Exception ex) { folderActionError = ex.Message; }
+  }
+
+  private async Task MergeFolderAsync()
+  {
+    if (renamingFolder is null || mergeFolder is null) return;
+    try
+    {
+      await Music.RenameFolderAsync(renamingFolder, folderName, true, CancellationToken.None);
+      CancelRename();
+      Refresh();
+    }
+    catch (Exception ex) { folderActionError = ex.Message; }
+  }
+
+  private async Task DeleteFolderAsync(string folder)
+  {
+    var confirmed = await JS.InvokeAsync<bool>("confirm",
+      $"Удалить папку «{folder}»? Все треки из неё вернутся в исходную папку, а их ссылки из остальных папок будут удалены.");
+    if (!confirmed) return;
+    try
+    {
+      var count = await Music.DeleteFolderAndReturnTracksAsync(folder, CancellationToken.None);
+      Refresh();
+      folderActionError = count == 0 ? "Папка удалена. В ней не было треков." : null;
+    }
+    catch (Exception ex) { error = ex.Message; }
+  }
+
+  private void CancelRename()
+  {
+    renamingFolder = null;
+    mergeFolder = null;
+    folderName = "";
+    folderActionError = null;
+  }
+
+  private void CancelMerge()
+  {
+    mergeFolder = null;
+    folderActionError = null;
   }
 
   private RenderFragment Tree(IReadOnlyList<MusicTrack> tracks) => builder =>
