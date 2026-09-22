@@ -670,4 +670,10 @@ body {
 .music-path-part { flex: 1 1 9rem; }
 .music-path-part input { width: 100%; min-width: 0; }
 .music-error { color: #a52929; margin: .5rem 0; }
+.music-loading { display: flex; align-items: center; justify-content: center; gap: 1rem; min-height: 12rem; color: #6e6e73; }
+.music-buffering { display: flex; align-items: center; gap: .5rem; margin: -.4rem 0 1rem; font-size: .9rem; color: #6e6e73; }
+.music-spinner { display: inline-block; flex: none; width: 1.75rem; height: 1.75rem; border: 3px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: music-spin .8s linear infinite; }
+.music-spinner--small { width: 1rem; height: 1rem; border-width: 2px; vertical-align: -.15em; margin-right: .3rem; }
+@keyframes music-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .music-spinner { animation: none; } }
 @media (max-width: 700px) { .music-trees { grid-template-columns: 1fr; } }

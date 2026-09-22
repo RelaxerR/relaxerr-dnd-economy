@@ -22,7 +22,10 @@ else if (error is not null)
 {
   <div class="music-toolbar">
     <div><strong>@library.Source.Count</strong> осталось разобрать · <strong>@library.Destination.Count</strong> в папке «все»</div>
-    <button class="btn btn--primary" @onclick="NextAsync" disabled="@(busy || library.Source.Count == 0)">Начать</button>
+    <button class="btn btn--primary" @onclick="NextAsync" disabled="@(busy || library.Source.Count == 0)">
+      @if (busy) { <span class="music-spinner music-spinner--small" aria-hidden="true"></span> }
+      @(busy ? "Загружаем..." : "Начать")
+    </button>
   </div>
   <div class="music-trees">
     <section class="auth-card"><h2>Неразобранные</h2>@Tree(library.Source)</section>
@@ -36,10 +39,25 @@ else if (error is not null)
     <div class="modal-card music-modal">
       <h2>@current.Name</h2>
       <p class="catalog-meta">@(current.Reviewed ? "Повторное прослушивание · существующие папки сохранятся" : "Новый трек")</p>
-      @if (busy) { <p>Подготавливаем трек...</p> }
+      @if (busy)
+      {
+        <div class="music-loading" role="status" aria-live="polite">
+          <span class="music-spinner" aria-hidden="true"></span>
+          <span>@busyLabel</span>
+        </div>
+      }
       else
       {
-        <audio id="music-audio" controls preload="metadata" src="@previewUrl" @key="previewUrl"></audio>
+        <audio id="music-audio" controls preload="metadata" src="@previewUrl" @key="previewUrl"
+          @onwaiting="() => audioBuffering = true" @onplaying="() => audioBuffering = false"
+          @oncanplay="() => audioBuffering = false"></audio>
+        @if (audioBuffering)
+        {
+          <div class="music-buffering" role="status" aria-live="polite">
+            <span class="music-spinner music-spinner--small" aria-hidden="true"></span>
+            Загружаем аудио...
+          </div>
+        }
         <div class="music-trim">
           <label>Начало: @TimeSpan.FromSeconds(start).ToString(@"mm\:ss")</label>
           <input type="range" min="0" max="@duration" step="0.1" style="accent-color: @DurationColor" @bind="start" @bind:event="oninput" />
@@ -89,7 +107,8 @@ else if (error is not null)
   private readonly List<PathRow> rows = [];
   private string name = "", previewUrl = "";
   private string? error, actionError;
-  private bool busy, shouldPlay;
+  private string busyLabel = "Подготавливаем трек...";
+  private bool busy, shouldPlay, audioBuffering;
   private double start, end, duration;
   private string DurationColor
   {
@@ -137,7 +156,9 @@ else if (error is not null)
     rows.Clear(); AddRow();
     start = end = duration = 0;
     actionError = null;
+    audioBuffering = false;
     busy = true;
+    busyLabel = "Подготавливаем трек...";
     StateHasChanged();
     try
     {
@@ -148,7 +169,7 @@ else if (error is not null)
       busy = false;
       shouldPlay = true;
     }
-    catch (Exception ex) { actionError = ex.Message; busy = false; }
+    catch (Exception ex) { error = ex.Message; current = null; busy = false; }
   }
 
   private void SetName(string value) => name = MusicReviewService.NormalizeName(value);
@@ -157,7 +178,9 @@ else if (error is not null)
   {
     if (current is null) return;
     busy = true;
+    busyLabel = "Сохраняем и конвертируем трек...";
     actionError = null;
+    StateHasChanged();
     await JS.InvokeVoidAsync("musicReview.stop", "music-audio");
     try
     {
@@ -171,6 +194,9 @@ else if (error is not null)
   private async Task SkipAsync()
   {
     if (current is { Reviewed: false }) skipped.Add(current.Path);
+    busy = true;
+    busyLabel = "Выбираем следующий трек...";
+    StateHasChanged();
     await JS.InvokeVoidAsync("musicReview.stop", "music-audio");
     await NextAsync();
   }
@@ -181,8 +207,11 @@ else if (error is not null)
     if (current.Reviewed) { await SkipAsync(); return; }
     var confirmed = await JS.InvokeAsync<bool>("confirm", $"Безвозвратно удалить «{current.Name}»?");
     if (!confirmed) return;
+    busy = true;
+    busyLabel = "Удаляем трек...";
+    StateHasChanged();
     try { await Music.DeleteSourceAsync(current, CancellationToken.None); await NextAsync(); }
-    catch (Exception ex) { actionError = ex.Message; }
+    catch (Exception ex) { actionError = ex.Message; busy = false; }
   }
 
   private async Task CloseAsync() { await JS.InvokeVoidAsync("musicReview.stop", "music-audio"); current = null; Refresh(); }
