@@ -42,9 +42,9 @@ else if (error is not null)
         <audio id="music-audio" controls preload="metadata" src="@previewUrl" @key="previewUrl"></audio>
         <div class="music-trim">
           <label>Начало: @TimeSpan.FromSeconds(start).ToString(@"mm\:ss")</label>
-          <input type="range" min="0" max="@duration" step="0.1" @bind="start" @bind:event="oninput" />
+          <input type="range" min="0" max="@duration" step="0.1" style="accent-color: @DurationColor" @bind="start" @bind:event="oninput" />
           <label>Конец: @TimeSpan.FromSeconds(end).ToString(@"mm\:ss")</label>
-          <input type="range" min="0" max="@duration" step="0.1" @bind="end" @bind:event="oninput" />
+          <input type="range" min="0" max="@duration" step="0.1" style="accent-color: @DurationColor" @bind="end" @bind:event="oninput" />
           <button class="btn" @onclick="PlaySelectionAsync">Прослушать фрагмент</button>
         </div>
         <div class="form-field"><label>Имя файла (без расширения)</label><input value="@name" @oninput="e => SetName(e.Value?.ToString() ?? string.Empty)" /></div>
@@ -91,6 +91,17 @@ else if (error is not null)
   private string? error, actionError;
   private bool busy, shouldPlay;
   private double start, end, duration;
+  private string DurationColor
+  {
+    get
+    {
+      var ratio = Math.Clamp((duration - 60) / 540, 0, 1);
+      var red = (int)Math.Round(13 + (220 - 13) * ratio);
+      var green = (int)Math.Round(110 + (53 - 110) * ratio);
+      var blue = (int)Math.Round(253 + (69 - 253) * ratio);
+      return $"#{red:X2}{green:X2}{blue:X2}";
+    }
+  }
 
   private string? NameError => current is null ? null : Music.CheckCollision(current, name);
 
