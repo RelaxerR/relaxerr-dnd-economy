@@ -47,7 +47,7 @@ else if (error is not null)
           <input type="range" min="0" max="@duration" step="0.1" @bind="end" @bind:event="oninput" />
           <button class="btn" @onclick="PlaySelectionAsync">Прослушать фрагмент</button>
         </div>
-        <div class="form-field"><label>Имя файла (без расширения)</label><input @bind="name" @bind:event="oninput" /></div>
+        <div class="form-field"><label>Имя файла (без расширения)</label><input value="@name" @oninput="e => SetName(e.Value?.ToString() ?? string.Empty)" /></div>
         @if (NameError is not null) { <p class="music-error">@NameError</p> }
         <h3>Добавить в папки</h3>
         @foreach (var row in rows)
@@ -119,8 +119,9 @@ else if (error is not null)
     if (pool.Count == 0) pool = library.Destination;
     if (pool.Count == 0) { current = null; return; }
     current = pool[Random.Shared.Next(pool.Count)];
-    name = current.Reviewed ? Path.GetFileNameWithoutExtension(current.Name) : SafeName(Path.GetFileNameWithoutExtension(current.Name));
-    if (NameError is not null && !current.Reviewed) name = SafeName(name + "_" + Random.Shared.Next(1000, 9999));
+    name = MusicReviewService.NormalizeName(Path.GetFileNameWithoutExtension(current.Name));
+    if (string.IsNullOrEmpty(name)) name = "track";
+    if (NameError is not null && !current.Reviewed) name = $"{name}_{Random.Shared.Next(1000, 9999)}";
     rows.Clear(); AddRow();
     start = end = duration = 0;
     actionError = null;
@@ -138,11 +139,7 @@ else if (error is not null)
     catch (Exception ex) { actionError = ex.Message; busy = false; }
   }
 
-  private static string SafeName(string value)
-  {
-    var text = new string(value.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '_').ToArray()).Trim('_');
-    return text.Length == 0 ? "track" : text;
-  }
+  private void SetName(string value) => name = MusicReviewService.NormalizeName(value);
 
   private async Task SaveAsync()
   {
@@ -183,7 +180,7 @@ else if (error is not null)
   private void SetPart(PathRow row, int index, string value)
   {
     while (row.Parts.Count <= index) row.Parts.Add("");
-    row.Parts[index] = value;
+    row.Parts[index] = MusicReviewService.NormalizeName(value);
     row.Parts.RemoveRange(index + 1, row.Parts.Count - index - 1);
   }
 

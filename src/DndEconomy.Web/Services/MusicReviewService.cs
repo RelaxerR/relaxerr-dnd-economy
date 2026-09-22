@@ -60,6 +60,37 @@ public sealed class MusicReviewService(IOptions<MusicReviewOptions> options, ILo
     return null;
   }
 
+  /// <summary>Приводит введённое имя к безопасному имени файла или папки Foundry.</summary>
+  public static string NormalizeName(string value)
+  {
+    var result = new StringBuilder(value.Length);
+    foreach (var character in value)
+    {
+      var part = Transliterate(character);
+      if (part is null)
+        part = char.IsAsciiLetterOrDigit(character) || character is '-' or '_' ? character.ToString() : "_";
+      if (part.Length == 0) continue;
+      if (part == "_" && (result.Length == 0 || result[^1] == '_')) continue;
+      result.Append(part);
+    }
+    return result.ToString().Trim('_');
+  }
+
+  private static string? Transliterate(char value)
+  {
+    var replacement = char.ToLowerInvariant(value) switch
+    {
+      'а' => "a", 'б' => "b", 'в' => "v", 'г' => "g", 'д' => "d", 'е' => "e", 'ё' => "yo",
+      'ж' => "zh", 'з' => "z", 'и' => "i", 'й' => "y", 'к' => "k", 'л' => "l", 'м' => "m",
+      'н' => "n", 'о' => "o", 'п' => "p", 'р' => "r", 'с' => "s", 'т' => "t", 'у' => "u",
+      'ф' => "f", 'х' => "kh", 'ц' => "ts", 'ч' => "ch", 'ш' => "sh", 'щ' => "shch",
+      'ъ' => "", 'ы' => "y", 'ь' => "", 'э' => "e", 'ю' => "yu", 'я' => "ya",
+      _ => null
+    };
+    if (replacement is null || replacement.Length == 0) return replacement;
+    return char.IsUpper(value) ? char.ToUpperInvariant(replacement[0]) + replacement[1..] : replacement;
+  }
+
   public static string? ValidateFolder(string folder)
   {
     if (string.IsNullOrWhiteSpace(folder)) return "Выберите папку.";
