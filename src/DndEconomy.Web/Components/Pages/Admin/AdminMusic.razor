@@ -47,7 +47,7 @@ else if (error is not null)
           <input type="range" min="0" max="@duration" step="0.1" style="accent-color: @DurationColor" @bind="end" @bind:event="oninput" />
           <button class="btn" @onclick="PlaySelectionAsync">Прослушать фрагмент</button>
         </div>
-        <div class="form-field"><label>Имя файла (без расширения)</label><input value="@name" @oninput="e => SetName(e.Value?.ToString() ?? string.Empty)" /></div>
+        <div class="form-field"><label>Имя файла (без расширения)</label><input value="@name" @onchange="e => SetName(e.Value?.ToString() ?? string.Empty)" /></div>
         @if (NameError is not null) { <p class="music-error">Имя файла: @NameError</p> }
         <h3>Добавить в папки</h3>
         @foreach (var row in rows)
@@ -59,7 +59,7 @@ else if (error is not null)
               if (i > 0 && string.IsNullOrWhiteSpace(row.Parts[i - 1])) break;
               <div class="music-path-part">
                 <input list="music-folders-@row.Id-@i" placeholder="@(i == 0 ? "Папка" : "Подпапка")"
-                  value="@(i < row.Parts.Count ? row.Parts[i] : "")" @oninput="@(e => SetPart(row, i, e.Value?.ToString() ?? string.Empty))" />
+                  value="@(i < row.Parts.Count ? row.Parts[i] : "")" @onchange="@(e => SetPart(row, i, e.Value?.ToString() ?? string.Empty))" />
                 <datalist id="music-folders-@row.Id-@i">
                   @foreach (var option in FolderOptions(row, i)) { <option value="@option"></option> }
                 </datalist>
