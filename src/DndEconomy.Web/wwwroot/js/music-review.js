@@ -7,6 +7,5 @@ window.musicReview = {
     audio.ontimeupdate = () => { if (audio.currentTime >= end) audio.pause(); };
     audio.play().catch(() => {});
   },
-  stop: (id) => { const audio = document.getElementById(id); if (audio) audio.pause(); },
-  duration: (id) => document.getElementById(id)?.duration || 0
+  stop: (id) => { const audio = document.getElementById(id); if (audio) audio.pause(); }
 };

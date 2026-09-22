@@ -217,7 +217,7 @@ public sealed class MusicReviewService(IOptions<MusicReviewOptions> options, ILo
       throw new InvalidOperationException("Настройте разные, не вложенные друг в друга пути MusicReview:SourcePath и DestinationPath.");
   }
 
-  private static async Task<double> GetDurationAsync(string path, CancellationToken ct)
+  public static async Task<double> GetDurationAsync(string path, CancellationToken ct)
   {
     var psi = new ProcessStartInfo("ffprobe") { RedirectStandardOutput = true, RedirectStandardError = true };
     foreach (var arg in new[] { "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path }) psi.ArgumentList.Add(arg);

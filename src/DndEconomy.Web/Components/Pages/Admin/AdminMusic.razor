@@ -100,12 +100,6 @@ else if (error is not null)
     if (!shouldPlay || busy) return;
     shouldPlay = false;
     await JS.InvokeVoidAsync("musicReview.start", "music-audio");
-    for (var i = 0; i < 12; i++)
-    {
-      await Task.Delay(150);
-      duration = await JS.InvokeAsync<double>("musicReview.duration", "music-audio");
-      if (duration > 0) { end = duration; await InvokeAsync(StateHasChanged); break; }
-    }
   }
 
   private void Refresh()
@@ -135,7 +129,8 @@ else if (error is not null)
     try
     {
       // Подготовка через тот же Opus, который будет записан при сохранении.
-      await Music.PreparePreviewAsync(current, CancellationToken.None);
+      var preview = await Music.PreparePreviewAsync(current, CancellationToken.None);
+      duration = end = await MusicReviewService.GetDurationAsync(preview, CancellationToken.None);
       previewUrl = "/api/admin/music/preview?path=" + Uri.EscapeDataString(current.Path) + "&reviewed=" + current.Reviewed.ToString().ToLowerInvariant();
       busy = false;
       shouldPlay = true;
