@@ -1,0 +1,215 @@
+@page "/admin/music"
+@rendermode InteractiveServer
+@using DndEconomy.Domain.Constants
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject MusicReviewService Music
+@inject IJSRuntime JS
+
+<PageTitle>Музыка — Relaxerr</PageTitle>
+<h1>Музыка</h1>
+<AdminNav />
+
+@if (!Music.IsConfigured)
+{
+  <section class="auth-card"><p>Укажите MusicReview:SourcePath и MusicReview:DestinationPath в настройках сервера.</p></section>
+}
+else if (error is not null)
+{
+  <p class="music-error">@error</p>
+}
+
+@if (library is not null)
+{
+  <div class="music-toolbar">
+    <div><strong>@library.Source.Count</strong> осталось разобрать · <strong>@library.Destination.Count</strong> в папке «все»</div>
+    <button class="btn btn--primary" @onclick="NextAsync" disabled="@(busy || library.Source.Count == 0)">Начать</button>
+  </div>
+  <div class="music-trees">
+    <section class="auth-card"><h2>Неразобранные</h2>@Tree(library.Source)</section>
+    <section class="auth-card"><h2>Распределённые</h2>@Tree(library.Destination)</section>
+  </div>
+}
+
+@if (current is not null)
+{
+  <div class="modal-backdrop">
+    <div class="modal-card music-modal">
+      <h2>@current.Name</h2>
+      <p class="catalog-meta">@(current.Reviewed ? "Повторное прослушивание · существующие папки сохранятся" : "Новый трек")</p>
+      @if (busy) { <p>Подготавливаем трек...</p> }
+      else
+      {
+        <audio id="music-audio" controls preload="metadata" src="@previewUrl" @key="previewUrl"></audio>
+        <div class="music-trim">
+          <label>Начало: @TimeSpan.FromSeconds(start).ToString(@"mm\:ss")</label>
+          <input type="range" min="0" max="@duration" step="0.1" @bind="start" @bind:event="oninput" />
+          <label>Конец: @TimeSpan.FromSeconds(end).ToString(@"mm\:ss")</label>
+          <input type="range" min="0" max="@duration" step="0.1" @bind="end" @bind:event="oninput" />
+          <button class="btn" @onclick="PlaySelectionAsync">Прослушать фрагмент</button>
+        </div>
+        <div class="form-field"><label>Имя файла (без расширения)</label><input @bind="name" @bind:event="oninput" /></div>
+        @if (NameError is not null) { <p class="music-error">@NameError</p> }
+        <h3>Добавить в папки</h3>
+        @foreach (var row in rows)
+        {
+          <div class="music-path-row" @key="row">
+            @for (var index = 0; index <= row.Parts.Count; index++)
+            {
+              var i = index;
+              if (i > 0 && string.IsNullOrWhiteSpace(row.Parts[i - 1])) break;
+              <div class="music-path-part">
+                <input list="music-folders-@row.Id-@i" placeholder="@(i == 0 ? "Папка" : "Подпапка")"
+                  value="@(i < row.Parts.Count ? row.Parts[i] : "")" @oninput="@(e => SetPart(row, i, e.Value?.ToString() ?? string.Empty))" />
+                <datalist id="music-folders-@row.Id-@i">
+                  @foreach (var option in FolderOptions(row, i)) { <option value="@option"></option> }
+                </datalist>
+              </div>
+            }
+            <button class="btn" title="Убрать путь" @onclick="() => rows.Remove(row)">×</button>
+          </div>
+        }
+        <button class="btn" @onclick="AddRow">+ Ещё папка</button>
+        @if (actionError is not null) { <p class="music-error">@actionError</p> }
+        <div class="modal-card__actions">
+          <button class="btn btn--primary" disabled="@(busy || NameError is not null)" @onclick="SaveAsync">Сохранить и к следующей</button>
+          <button class="btn" disabled="@busy" @onclick="SkipAsync">Пропустить</button>
+          <button class="btn modal-card__delete" disabled="@busy" @onclick="DeleteAsync">Удалить</button>
+          <button class="btn" disabled="@busy" @onclick="CloseAsync">Закрыть</button>
+        </div>
+      }
+    </div>
+  </div>
+}
+
+@code {
+  private MusicLibrary? library;
+  private MusicTrack? current;
+  private readonly HashSet<string> skipped = new(StringComparer.Ordinal);
+  private readonly List<PathRow> rows = [];
+  private string name = "", previewUrl = "";
+  private string? error, actionError;
+  private bool busy, shouldPlay;
+  private double start, end, duration;
+
+  private string? NameError => current is null ? null : Music.CheckCollision(current, name);
+
+  protected override Task OnInitializedAsync() { Refresh(); return Task.CompletedTask; }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!shouldPlay || busy) return;
+    shouldPlay = false;
+    await JS.InvokeVoidAsync("musicReview.start", "music-audio");
+  }
+
+  private void Refresh()
+  {
+    try { if (Music.IsConfigured) library = Music.GetLibrary(); error = null; }
+    catch (Exception ex) { error = ex.Message; }
+  }
+
+  private async Task NextAsync()
+  {
+    Refresh();
+    if (library is null) return;
+    var candidates = library.Source.Where(t => !skipped.Contains(t.Path)).ToArray();
+    if (candidates.Length == 0) { skipped.Clear(); candidates = library.Source.ToArray(); }
+    var repeat = library.Destination.Count > 0 && Random.Shared.Next(10) == 0;
+    var pool = repeat ? library.Destination : candidates;
+    if (pool.Count == 0) pool = library.Destination;
+    if (pool.Count == 0) { current = null; return; }
+    current = pool[Random.Shared.Next(pool.Count)];
+    name = current.Reviewed ? Path.GetFileNameWithoutExtension(current.Name) : SafeName(Path.GetFileNameWithoutExtension(current.Name));
+    if (NameError is not null && !current.Reviewed) name = SafeName(name + "_" + Random.Shared.Next(1000, 9999));
+    rows.Clear(); AddRow();
+    start = end = duration = 0;
+    actionError = null;
+    busy = true;
+    StateHasChanged();
+    try
+    {
+      // Подготовка через тот же Opus, который будет записан при сохранении.
+      var preview = await Music.PreparePreviewAsync(current, CancellationToken.None);
+      duration = end = await MusicReviewService.GetDurationAsync(preview, CancellationToken.None);
+      previewUrl = "/api/admin/music/preview?path=" + Uri.EscapeDataString(current.Path) + "&reviewed=" + current.Reviewed.ToString().ToLowerInvariant();
+      busy = false;
+      shouldPlay = true;
+    }
+    catch (Exception ex) { actionError = ex.Message; busy = false; }
+  }
+
+  private static string SafeName(string value)
+  {
+    var text = new string(value.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '_').ToArray()).Trim('_');
+    return text.Length == 0 ? "track" : text;
+  }
+
+  private async Task SaveAsync()
+  {
+    if (current is null) return;
+    busy = true;
+    actionError = null;
+    await JS.InvokeVoidAsync("musicReview.stop", "music-audio");
+    try
+    {
+      await Music.SaveAsync(current, name, start, end, rows.Select(r => string.Join('/', r.Parts.Where(p => p.Length > 0))).ToArray(), CancellationToken.None);
+      await NextAsync();
+    }
+    catch (Exception ex) { actionError = ex.Message; }
+    finally { busy = false; Refresh(); }
+  }
+
+  private async Task SkipAsync()
+  {
+    if (current is { Reviewed: false }) skipped.Add(current.Path);
+    await JS.InvokeVoidAsync("musicReview.stop", "music-audio");
+    await NextAsync();
+  }
+
+  private async Task DeleteAsync()
+  {
+    if (current is null) return;
+    if (current.Reviewed) { await SkipAsync(); return; }
+    var confirmed = await JS.InvokeAsync<bool>("confirm", $"Безвозвратно удалить «{current.Name}»?");
+    if (!confirmed) return;
+    try { await Music.DeleteSourceAsync(current, CancellationToken.None); await NextAsync(); }
+    catch (Exception ex) { actionError = ex.Message; }
+  }
+
+  private async Task CloseAsync() { await JS.InvokeVoidAsync("musicReview.stop", "music-audio"); current = null; Refresh(); }
+  private Task PlaySelectionAsync() => JS.InvokeVoidAsync("musicReview.playSelection", "music-audio", start, end).AsTask();
+  private void AddRow() => rows.Add(new PathRow());
+
+  private void SetPart(PathRow row, int index, string value)
+  {
+    while (row.Parts.Count <= index) row.Parts.Add("");
+    row.Parts[index] = value;
+    row.Parts.RemoveRange(index + 1, row.Parts.Count - index - 1);
+  }
+
+  private IEnumerable<string> FolderOptions(PathRow row, int index)
+  {
+    if (library is null) return [];
+    var prefix = string.Join('/', row.Parts.Take(index));
+    return library.Folders.Select(p => p.Replace('\\', '/').Split('/'))
+      .Where(parts => parts.Length > index && (index == 0 || string.Join('/', parts.Take(index)) == prefix))
+      .Select(parts => parts[index]).Distinct(StringComparer.OrdinalIgnoreCase).Order();
+  }
+
+  private RenderFragment Tree(IReadOnlyList<MusicTrack> tracks) => builder =>
+  {
+    var groups = tracks.GroupBy(t => Path.GetDirectoryName(t.Path) ?? "").OrderBy(g => g.Key);
+    var seq = 0;
+    foreach (var group in groups)
+    {
+      builder.OpenElement(seq++, "details");
+      builder.OpenElement(seq++, "summary"); builder.AddContent(seq++, Path.GetRelativePath(tracks[0].Reviewed ? Music.DestinationRoot : Music.SourceRoot, group.Key) + $" ({group.Count()})"); builder.CloseElement();
+      builder.OpenElement(seq++, "ul");
+      foreach (var track in group.OrderBy(t => t.Name))
+      { builder.OpenElement(seq++, "li"); builder.AddContent(seq++, track.Name); builder.CloseElement(); }
+      builder.CloseElement(); builder.CloseElement();
+    }
+  };
+
+  private sealed class PathRow { public Guid Id { get; } = Guid.NewGuid(); public List<string> Parts { get; } = []; }
+}

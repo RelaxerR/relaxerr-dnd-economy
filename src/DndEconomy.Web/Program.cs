@@ -5,6 +5,7 @@ using DndEconomy.Infrastructure.Identity;
 using DndEconomy.Infrastructure.Persistence;
 using DndEconomy.Web;
 using DndEconomy.Web.Components.Account;
+using DndEconomy.Web.Services;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -52,6 +53,8 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 builder.Services.AddScoped<DndEconomy.Web.Services.ToastService>();
+builder.Services.Configure<MusicReviewOptions>(builder.Configuration.GetSection("MusicReview"));
+builder.Services.AddSingleton<MusicReviewService>();
 
 builder.Services.AddRateLimiter(ConfigureRateLimiting);
 

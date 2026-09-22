@@ -653,3 +653,20 @@ body {
   padding: 4px 12px;
   font-size: 0.85rem;
 }
+
+/* Разбор музыки */
+.music-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.5rem 0; }
+.music-trees { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+.music-trees .auth-card { min-width: 0; max-height: 38rem; overflow: auto; }
+.music-trees details { margin: .45rem 0; }
+.music-trees summary { cursor: pointer; font-weight: 600; }
+.music-trees li { overflow-wrap: anywhere; margin: .3rem 0; }
+.music-modal { width: min(760px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto; }
+.music-modal audio { display: block; width: 100%; margin: 1rem 0; }
+.music-trim { display: grid; gap: .35rem; margin: 1rem 0; }
+.music-trim input { width: 100%; }
+.music-path-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .5rem 0; }
+.music-path-part { flex: 1 1 9rem; }
+.music-path-part input { width: 100%; min-width: 0; }
+.music-error { color: #a52929; margin: .5rem 0; }
+@media (max-width: 700px) { .music-trees { grid-template-columns: 1fr; } }
