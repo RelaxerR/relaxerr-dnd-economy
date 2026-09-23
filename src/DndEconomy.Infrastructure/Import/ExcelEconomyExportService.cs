@@ -17,6 +17,7 @@ public sealed class ExcelEconomyExportService : IExcelEconomyExportService
   private const string SettingsSheetName = "Настройки";
   private const string CoinAcceptanceSheetName = "Приём монет";
   private const string EconomyActivitiesSheetName = "Экономическая активность";
+  private const string PartySizeCoefficientsSheetName = "Размер партии";
 
   private static readonly Dictionary<CitySize, string> CitySizeLabels = new()
   {
@@ -37,11 +38,16 @@ public sealed class ExcelEconomyExportService : IExcelEconomyExportService
 
   private readonly IEconomyAdminService _economyAdminService;
   private readonly IEconomyActivityAdminService _economyActivityAdminService;
+  private readonly IPartySizeCoefficientAdminService _partySizeCoefficientAdminService;
 
-  public ExcelEconomyExportService(IEconomyAdminService economyAdminService, IEconomyActivityAdminService economyActivityAdminService)
+  public ExcelEconomyExportService(
+    IEconomyAdminService economyAdminService,
+    IEconomyActivityAdminService economyActivityAdminService,
+    IPartySizeCoefficientAdminService partySizeCoefficientAdminService)
   {
     _economyAdminService = economyAdminService;
     _economyActivityAdminService = economyActivityAdminService;
+    _partySizeCoefficientAdminService = partySizeCoefficientAdminService;
   }
 
   #endregion
@@ -236,6 +242,29 @@ public sealed class ExcelEconomyExportService : IExcelEconomyExportService
       sheet.Cell(row, 8).Value = activity.RecommendedDurationDays;
       sheet.Cell(row, 9).Value = activity.Description;
       sheet.Cell(row, 10).Value = activity.BalanceNote ?? "";
+      row++;
+    }
+
+    sheet.Columns().AdjustToContents();
+    return SaveToBytes(workbook);
+  }
+
+  /// <inheritdoc />
+  public async Task<byte[]> ExportPartySizeCoefficientsAsync(CancellationToken cancellationToken)
+  {
+    var coefficients = await _partySizeCoefficientAdminService.GetAllAsync(cancellationToken);
+
+    using var workbook = new XLWorkbook();
+    var sheet = workbook.Worksheets.Add(PartySizeCoefficientsSheetName);
+
+    sheet.Cell(1, 1).Value = "Размер партии";
+    sheet.Cell(1, 2).Value = "Коэффициент";
+
+    var row = 2;
+    foreach (var coefficient in coefficients)
+    {
+      sheet.Cell(row, 1).Value = coefficient.PartySize;
+      sheet.Cell(row, 2).Value = coefficient.Coefficient;
       row++;
     }
 

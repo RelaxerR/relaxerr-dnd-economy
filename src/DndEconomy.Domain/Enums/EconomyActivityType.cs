@@ -4,7 +4,7 @@ namespace DndEconomy.Domain.Enums;
 /// Вид экономической активности (<see cref="DndEconomy.Domain.Entities.EconomyActivity"/>) —
 /// определяет группировку в интерфейсе и то, как активность участвует в расчёте дохода партии:
 /// партийное задание делится с учётом коэффициента размера партии
-/// (<c>PartySizeCoefficient</c>), занятие в простое
+/// (<see cref="DndEconomy.Domain.Entities.PartySizeCoefficient"/>), занятие в простое
 /// считается для каждого персонажа независимо.
 /// </summary>
 public enum EconomyActivityType

@@ -162,6 +162,7 @@ public static class DependencyInjection
     services.AddScoped<IAdminUserService, AdminUserService>();
     services.AddScoped<IEconomyAdminService, EconomyAdminService>();
     services.AddScoped<IEconomyActivityAdminService, EconomyActivityAdminService>();
+    services.AddScoped<IPartySizeCoefficientAdminService, PartySizeCoefficientAdminService>();
     services.AddSingleton(TimeProvider.System);
   }
 

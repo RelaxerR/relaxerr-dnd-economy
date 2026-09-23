@@ -2,7 +2,7 @@ namespace DndEconomy.Application.Import;
 
 /// <summary>
 /// Разбирает загруженные .xlsx-файлы с листами таблицы экономики ("Предметы", "Города",
-/// "Сезонность", "Настройки", "Приём монет", "Экономическая активность") и наполняет БД. Каждый лист
+/// "Сезонность", "Настройки", "Приём монет", "Экономическая активность", "Размер партии") и наполняет БД. Каждый лист
 /// импортируется отдельным методом — админ грузит файл на профильной странице (например,
 /// "Приём монет" на /admin/economy/coin-acceptance), и импортируется только соответствующий
 /// лист, даже если в книге есть остальные.
@@ -55,4 +55,10 @@ public interface IExcelEconomyImportService
   /// сигнатуры с остальными методами (используется <c>ExcelSheetPanel</c>) и игнорируется.
   /// </summary>
   Task<EconomyImportSummary> ImportEconomyActivitiesAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken);
+
+  /// <summary>
+  /// Импортирует лист "Размер партии" — коэффициенты убывающей полезности партийных заданий
+  /// (размер партии 1..8 → множитель к ставке на игрока). Ключ записи — размер партии.
+  /// </summary>
+  Task<EconomyImportSummary> ImportPartySizeCoefficientsAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken);
 }

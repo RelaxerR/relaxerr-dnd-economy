@@ -28,4 +28,7 @@ public interface IExcelEconomyExportService
   /// на игрока) для партийных заданий и занятий в простое.
   /// </summary>
   Task<byte[]> ExportEconomyActivitiesAsync(CancellationToken cancellationToken);
+
+  /// <summary>Строит книгу .xlsx с листом "Размер партии" — коэффициенты убывающей полезности партийных заданий.</summary>
+  Task<byte[]> ExportPartySizeCoefficientsAsync(CancellationToken cancellationToken);
 }

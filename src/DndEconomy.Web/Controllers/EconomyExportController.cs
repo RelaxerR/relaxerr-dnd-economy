@@ -61,6 +61,14 @@ public sealed class EconomyExportController : ControllerBase
     return AsXlsx(content, "priem-monet");
   }
 
+  /// <summary>Лист "Размер партии" — коэффициенты убывающей полезности партийных заданий.</summary>
+  [HttpGet("party-size/export")]
+  public async Task<IActionResult> ExportPartySizeCoefficients(CancellationToken cancellationToken)
+  {
+    var content = await _exportService.ExportPartySizeCoefficientsAsync(cancellationToken);
+    return AsXlsx(content, "razmer-partii");
+  }
+
   #endregion
 
   #region Приватные шаги

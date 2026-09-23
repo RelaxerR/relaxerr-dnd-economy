@@ -163,6 +163,7 @@
     if (s.SessionsImported > 0) parts.Add($"сессий: {s.SessionsImported}");
     if (s.CoinAcceptancesImported > 0) parts.Add($"приём монет: {s.CoinAcceptancesImported}");
     if (s.EconomyActivitiesImported > 0) parts.Add($"активностей: {s.EconomyActivitiesImported}");
+    if (s.PartySizeCoefficientsImported > 0) parts.Add($"коэф. размера партии: {s.PartySizeCoefficientsImported}");
 
     var removedParts = new List<string>();
     if (s.ItemsRemoved > 0) removedParts.Add($"предметов: {s.ItemsRemoved}");
@@ -172,6 +173,7 @@
     if (s.SessionsRemoved > 0) removedParts.Add($"сессий: {s.SessionsRemoved}");
     if (s.CoinAcceptancesRemoved > 0) removedParts.Add($"приём монет: {s.CoinAcceptancesRemoved}");
     if (s.EconomyActivitiesRemoved > 0) removedParts.Add($"активностей: {s.EconomyActivitiesRemoved}");
+    if (s.PartySizeCoefficientsRemoved > 0) removedParts.Add($"коэф. размера партии: {s.PartySizeCoefficientsRemoved}");
 
     if (parts.Count == 0 && removedParts.Count == 0)
     {

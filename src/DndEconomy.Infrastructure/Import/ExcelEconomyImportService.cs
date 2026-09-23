@@ -14,7 +14,7 @@ namespace DndEconomy.Infrastructure.Import;
 
 /// <summary>
 /// Разбирает листы таблицы экономики ("Предметы", "Города", "Сезонность", "Настройки",
-/// "Приём монет", "Экономическая активность") и наполняет БД. Каждый лист импортируется отдельным публичным методом —
+/// "Приём монет", "Экономическая активность", "Размер партии") и наполняет БД. Каждый лист импортируется отдельным публичным методом —
 /// вызывается с профильной страницы админки (например, лист "Сезонность" — со страницы
 /// /admin/economy/season-modifiers), которая грузит файл целиком, но использует из него
 /// только свой лист, даже если в книге есть остальные (так один и тот же файл-мастер
@@ -31,6 +31,7 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   private const string SettingsSheetName = "Настройки";
   private const string CoinAcceptanceSheetName = "Приём монет";
   private const string EconomyActivitiesSheetName = "Экономическая активность";
+  private const string PartySizeCoefficientsSheetName = "Размер партии";
 
   // Формат названия в исходнике: "Русское название [English Name]" — English опционален.
   [GeneratedRegex(@"^(?<ru>.+?)\s*(\[(?<en>.+)\])?$")]
@@ -189,6 +190,27 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     _logger.LogInformation(
       "Импортирован лист «{Sheet}»: активностей {Count}, удалено {Removed} (persist={Persist})",
       EconomyActivitiesSheetName, summary.EconomyActivitiesImported, summary.EconomyActivitiesRemoved, persist);
+    return summary;
+  }
+
+  /// <inheritdoc />
+  public async Task<EconomyImportSummary> ImportPartySizeCoefficientsAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
+  {
+    var summary = new EconomyImportSummary();
+    using var workbook = OpenWorkbook(fileStream);
+
+    if (!workbook.Worksheets.TryGetWorksheet(PartySizeCoefficientsSheetName, out var sheet))
+    {
+      summary.Warnings.Add($"В файле не найден лист «{PartySizeCoefficientsSheetName}» — ничего не импортировано.");
+      return summary;
+    }
+
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    await ImportPartySizeCoefficientsAsync(dbContext, sheet, replaceExisting, persist, summary, cancellationToken);
+
+    _logger.LogInformation(
+      "Импортирован лист «{Sheet}»: коэф. размера партии {Count}, удалено {Removed} (persist={Persist})",
+      PartySizeCoefficientsSheetName, summary.PartySizeCoefficientsImported, summary.PartySizeCoefficientsRemoved, persist);
     return summary;
   }
 
@@ -860,6 +882,80 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
     {
       dbContext.EconomyActivities.RemoveRange(existingActivities);
       dbContext.EconomyActivities.AddRange(newActivities);
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
+  }
+
+  #endregion
+
+  #region Импорт листа "Размер партии"
+
+  /// <summary>
+  /// Импортирует коэффициенты размера партии — строка на размер партии (колонка 1) с
+  /// коэффициентом (колонка 2). Обновление по естественному ключу — размеру партии; при
+  /// <paramref name="replaceExisting"/> размеры, которых нет в файле, удаляются. Повтор одного
+  /// размера в файле — побеждает последняя строка (с предупреждением).
+  /// </summary>
+  private static async Task ImportPartySizeCoefficientsAsync(
+    ApplicationDbContext dbContext, IXLWorksheet sheet, bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
+  {
+    var existingBySize = await dbContext.PartySizeCoefficients.ToDictionaryAsync(x => x.PartySize, cancellationToken);
+    var touchedSizes = new HashSet<int>();
+
+    foreach (var row in sheet.RowsUsed().Skip(1))
+    {
+      if (row.Cell(1).IsEmpty())
+      {
+        continue;
+      }
+
+      if (!row.Cell(1).TryGetValue<int>(out var partySize) || !row.Cell(2).TryGetValue<decimal>(out var coefficient))
+      {
+        summary.Warnings.Add($"Строка {row.RowNumber()} пропущена — размер партии и коэффициент должны быть числами.");
+        continue;
+      }
+
+      var error = PartySizeCoefficientValidator.Validate(partySize, coefficient);
+      if (error is not null)
+      {
+        summary.Warnings.Add($"Строка {row.RowNumber()} пропущена — {error}");
+        continue;
+      }
+
+      if (!touchedSizes.Add(partySize))
+      {
+        summary.Warnings.Add($"Размер партии {partySize} встречается в файле несколько раз — взята строка {row.RowNumber()}.");
+      }
+      else
+      {
+        summary.PartySizeCoefficientsImported++;
+      }
+
+      if (existingBySize.TryGetValue(partySize, out var existing))
+      {
+        existing.Coefficient = coefficient;
+        existing.UpdatedAtUtc = DateTime.UtcNow;
+      }
+      else
+      {
+        var created = new PartySizeCoefficient { PartySize = partySize, Coefficient = coefficient };
+        dbContext.PartySizeCoefficients.Add(created);
+        existingBySize[partySize] = created;
+      }
+    }
+
+    if (replaceExisting)
+    {
+      var toRemove = existingBySize.Values.Where(x => !touchedSizes.Contains(x.PartySize)).ToList();
+      summary.PartySizeCoefficientsRemoved = toRemove.Count;
+      if (persist)
+      {
+        dbContext.PartySizeCoefficients.RemoveRange(toRemove);
+      }
+    }
+
+    if (persist)
+    {
       await dbContext.SaveChangesAsync(cancellationToken);
     }
   }
