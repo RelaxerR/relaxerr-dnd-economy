@@ -672,6 +672,36 @@ body {
   font-size: 0.85rem;
 }
 
+/* Калькулятор дохода партии (см. AdminIncomeCalculator.razor) — карточки во всю ширину,
+   итоги крупным шрифтом, чтобы диапазон читался с одного взгляда. */
+
+.income-calc__card {
+  max-width: none;
+  margin-bottom: 24px;
+}
+
+.income-calc__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  margin-bottom: 16px;
+}
+
+.income-calc__total-label {
+  font-size: 0.9rem;
+  color: rgba(29, 29, 31, 0.6);
+}
+
+.income-calc__total-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.income-calc__coef-table {
+  min-width: 0;
+  width: auto;
+}
+
 /* Разбор музыки */
 .music-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.5rem 0; }
 .music-trees { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
