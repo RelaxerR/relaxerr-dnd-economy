@@ -26,93 +26,105 @@
   на странице <a href="/admin/economy/income-calculator">калькулятора дохода</a>.
 </p>
 
-<div class="admin-filter-row">
-  <div class="form-field">
-    <label>Тип</label>
-    <select @bind="typeFilter">
-      <option value="">Все</option>
-      @foreach (var type in EconomyActivityLabels.TypeOrder)
-      {
-        <option value="@type">@EconomyActivityLabels.Type(type)</option>
-      }
-    </select>
+<section class="auth-card admin-card--wide">
+  <div class="admin-card__header">
+    <h2>Справочник</h2>
+    <button type="button" class="btn btn--primary" @onclick="OpenCreateModal">+ Добавить активность</button>
   </div>
-  <div class="form-field">
-    <label>Уровень персонажей</label>
-    <input type="number" @bind="levelFilter" @bind:event="oninput" min="1" max="20" placeholder="любой" />
-  </div>
-</div>
 
-@if (activities is null)
-{
-  <p>Загрузка...</p>
-}
-else if (activities.Count == 0)
-{
-  <p class="catalog-meta">Активностей пока нет — добавьте вручную или загрузите лист Excel ниже.</p>
-}
-else
-{
-  <div class="admin-table-wrap">
-    <table class="admin-table admin-table--clickable">
-      <thead>
-        <tr>
-          <th>Категория</th>
-          <th>Опасность</th>
-          <th>Уровни</th>
-          <th>Ставка (зм/день на игрока)</th>
-          <th>Рек. дней</th>
-          <th>За контракт на игрока (зм)</th>
-          <th class="admin-table__name-col">Описание</th>
-          <th class="admin-table__name-col">Примечание по балансу</th>
-        </tr>
-      </thead>
-      <tbody>
-        @foreach (var typeGroup in FilteredActivities().GroupBy(x => x.ActivityType).OrderBy(g => g.Key))
+  <div class="catalog-toolbar catalog-toolbar--labelled">
+    <label class="catalog-toolbar__field">
+      Поиск
+      <input type="search" placeholder="Категория, описание…" value="@searchTerm" @oninput="OnSearchInput" />
+    </label>
+
+    <label class="catalog-toolbar__field">
+      Тип
+      <select @bind="typeFilter" @bind:after="OnFiltersChangedAsync">
+        <option value="">Все типы</option>
+        @foreach (var type in EconomyActivityLabels.TypeOrder)
         {
-          <tr class="admin-table__group-header">
-            <td colspan="8">@GroupTitle(typeGroup.Key)</td>
-          </tr>
-          @foreach (var activity in typeGroup)
-          {
-            <tr @onclick="() => OpenEditModal(activity)">
-              <td>@activity.Category</td>
-              <td>@(activity.DangerLevel is { } danger ? EconomyActivityLabels.Danger(danger) : "—")</td>
-              <td>@activity.MinLevel–@activity.MaxLevel</td>
-              <td>@FormatRange(activity.RateMin, activity.RateMax)</td>
-              <td>@activity.RecommendedDurationDays</td>
-              <td>@FormatRange(activity.RateMin * activity.RecommendedDurationDays, activity.RateMax * activity.RecommendedDurationDays)</td>
-              <td class="admin-table__name-col">@activity.Description</td>
-              <td class="admin-table__name-col">@activity.BalanceNote</td>
-            </tr>
-          }
+          <option value="@type">@EconomyActivityLabels.Type(type)</option>
         }
-      </tbody>
-    </table>
+      </select>
+    </label>
+
+    <label class="catalog-toolbar__field">
+      Уровень персонажей
+      <input type="number" min="1" max="20" placeholder="Любой"
+             @bind="levelFilter" @bind:event="oninput" @bind:after="OnFiltersChangedAsync" />
+    </label>
   </div>
-}
 
-<section class="auth-card">
-  <h2>Добавить активность</h2>
-  @if (createError is not null)
+  @if (activities is null)
   {
-    <div class="status-message status-message--error">@createError</div>
+    <p>Загрузка...</p>
   }
-  <EditForm Model="newActivity" OnValidSubmit="CreateActivityAsync" FormName="new-economy-activity">
-    <DataAnnotationsValidator />
-    <ValidationSummary class="validation-summary" />
+  else if (activities.Count == 0)
+  {
+    <p class="catalog-meta">Активностей пока нет — добавьте вручную или загрузите лист Excel ниже.</p>
+  }
+  else
+  {
+    var filtered = FilteredActivities();
+    var pageNumberClamped = ClampPage(pageNumber, filtered.Count);
 
-    @ActivityFields(newActivity)
+    @if (filtered.Count == 0)
+    {
+      <p class="catalog-meta">Ничего не найдено.</p>
+    }
+    else
+    {
+      <p class="catalog-meta">Найдено активностей: @filtered.Count. Ставки — зм в день на одного игрока, «за контракт» — ставка × рекомендуемые дни. Кликните по строке, чтобы отредактировать или удалить.</p>
 
-    <button type="submit" class="btn btn--primary">Добавить</button>
-  </EditForm>
+      <div class="admin-table-wrap">
+        <table class="admin-table admin-table--clickable">
+          <thead>
+            <tr>
+              <th>Тип</th>
+              <th>Категория</th>
+              <th>Опасность</th>
+              <th>Уровни</th>
+              <th title="зм в день на одного игрока">Ставка/день</th>
+              <th title="Рекомендуемая длительность">Дней</th>
+              <th title="Ставка × рекомендуемая длительность, зм на одного игрока">За контракт</th>
+              <th class="admin-table__name-col">Описание</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach (var activity in filtered.Skip((pageNumberClamped - 1) * PageSize).Take(PageSize))
+            {
+              <tr @onclick="() => OpenEditModal(activity)">
+                <td>@EconomyActivityLabels.Type(activity.ActivityType)</td>
+                <td>@activity.Category</td>
+                <td>@(activity.DangerLevel is { } danger ? EconomyActivityLabels.Danger(danger) : "—")</td>
+                <td>@activity.MinLevel–@activity.MaxLevel</td>
+                <td>@FormatRange(activity.RateMin, activity.RateMax)</td>
+                <td>@activity.RecommendedDurationDays</td>
+                <td>@FormatRange(activity.RateMin * activity.RecommendedDurationDays, activity.RateMax * activity.RecommendedDurationDays)</td>
+                <td class="admin-table__name-col">
+                  @activity.Description
+                  @if (!string.IsNullOrWhiteSpace(activity.BalanceNote))
+                  {
+                    <div class="catalog-meta admin-table__note">@activity.BalanceNote</div>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <AdminPager PageNumber="pageNumberClamped" PageNumberChanged="p => pageNumber = p" PageSize="PageSize" TotalCount="filtered.Count" />
+    }
+  }
 </section>
 
 @if (editingActivity is not null)
 {
   <div class="modal-backdrop" @onclick="CloseEditModal">
     <div class="modal-card" @onclick:stopPropagation="true">
-      <h2>Редактировать активность</h2>
+      <h2>@(editingActivityId is null ? "Добавить активность" : "Редактировать активность")</h2>
       @if (editError is not null)
       {
         <div class="status-message status-message--error">@editError</div>
@@ -124,9 +136,12 @@ else
         @ActivityFields(editingActivity)
 
         <div class="modal-card__actions">
-          <button type="submit" class="btn btn--primary">Сохранить</button>
+          <button type="submit" class="btn btn--primary">@(editingActivityId is null ? "Добавить" : "Сохранить")</button>
           <button type="button" class="btn" @onclick="CloseEditModal">Отмена</button>
-          <button type="button" class="btn modal-card__delete" @onclick="DeleteEditingActivityAsync">Удалить</button>
+          @if (editingActivityId is not null)
+          {
+            <button type="button" class="btn modal-card__delete" @onclick="DeleteEditingActivityAsync">Удалить</button>
+          }
         </div>
       </EditForm>
     </div>
@@ -137,19 +152,24 @@ else
                  ImportFunc="ExcelImportService.ImportEconomyActivitiesAsync" OnImported="ReloadAsync" AlwaysReplaces="true" />
 
 @code {
+  private const int PageSize = 20;
+  private const int SearchDebounceMilliseconds = 300;
+  private const string FiltersStorageKey = "dndeconomy.admin.activities.filters";
+
   private IReadOnlyList<EconomyActivitySummary>? activities;
+  private string searchTerm = "";
   private string typeFilter = "";
   private int? levelFilter;
+  private int pageNumber = 1;
+  private CancellationTokenSource? searchDebounceCts;
 
-  private ActivityFormModel newActivity = new();
-  private string? createError;
-
+  // editingActivity null — модалка закрыта; editingActivityId null при открытой модалке — создание.
   private Guid? editingActivityId;
   private ActivityFormModel? editingActivity;
   private string? editError;
 
   /// <summary>
-  /// Поля формы активности — общие для формы добавления и модалки редактирования. Выбор
+  /// Поля формы активности — общие для создания и редактирования в одной модалке. Выбор
   /// опасности показывается только у заданий: у простоя её нет (сервис сбрасывает её в null).
   /// </summary>
   private RenderFragment ActivityFields(ActivityFormModel model) =>
@@ -190,12 +210,31 @@ else
     await ReloadAsync();
   }
 
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!firstRender)
+      return;
+
+    var saved = await JSRuntime.LoadFiltersAsync<ActivityFiltersState>(FiltersStorageKey);
+    if (saved is null)
+      return;
+
+    searchTerm = saved.SearchTerm;
+    typeFilter = saved.Type;
+    levelFilter = saved.Level;
+    StateHasChanged();
+  }
+
   private async Task ReloadAsync()
   {
     activities = await EconomyActivityAdminService.GetAllAsync(CancellationToken.None);
   }
 
-  private IEnumerable<EconomyActivitySummary> FilteredActivities()
+  /// <summary>
+  /// Фильтрация в памяти — справочник одной кампании измеряется десятками-сотнями строк,
+  /// отдельный запрос в БД на каждый ввод здесь не нужен.
+  /// </summary>
+  private List<EconomyActivitySummary> FilteredActivities()
   {
     IEnumerable<EconomyActivitySummary> result = activities!;
 
@@ -205,25 +244,61 @@ else
     if (levelFilter is { } level)
       result = result.Where(x => x.MinLevel <= level && level <= x.MaxLevel);
 
-    return result;
+    var term = searchTerm.Trim();
+    if (term.Length > 0)
+      result = result.Where(x => ContainsTerm(x.Category, term) || ContainsTerm(x.Description, term) || ContainsTerm(x.BalanceNote, term));
+
+    return result.ToList();
   }
 
-  private async Task CreateActivityAsync()
+  private static bool ContainsTerm(string? text, string term) => text?.Contains(term, StringComparison.CurrentCultureIgnoreCase) == true;
+
+  private static int ClampPage(int page, int totalCount)
+    => Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize)));
+
+  private void OnSearchInput(ChangeEventArgs e)
+  {
+    searchTerm = e.Value?.ToString() ?? "";
+
+    searchDebounceCts?.Cancel();
+    var cts = new CancellationTokenSource();
+    searchDebounceCts = cts;
+
+    _ = DebounceSearchAsync(cts.Token);
+  }
+
+  private async Task DebounceSearchAsync(CancellationToken token)
   {
     try
     {
-      await EconomyActivityAdminService.CreateAsync(newActivity.ToInput(), CancellationToken.None);
+      await Task.Delay(SearchDebounceMilliseconds, token);
     }
-    catch (ArgumentException ex)
+    catch (TaskCanceledException)
     {
-      createError = ex.Message;
       return;
     }
 
-    createError = null;
-    newActivity = new() { ActivityType = newActivity.ActivityType };
-    await ReloadAsync();
-    ToastService.ShowSuccess("Активность добавлена");
+    await InvokeAsync(async () =>
+    {
+      await OnFiltersChangedAsync();
+      StateHasChanged();
+    });
+  }
+
+  private Task OnFiltersChangedAsync()
+  {
+    pageNumber = 1;
+    return JSRuntime.SaveFiltersAsync(FiltersStorageKey, new ActivityFiltersState(searchTerm, typeFilter, levelFilter));
+  }
+
+  private void OpenCreateModal()
+  {
+    editingActivityId = null;
+    editError = null;
+    editingActivity = new ActivityFormModel
+    {
+      ActivityType = Enum.TryParse<EconomyActivityType>(typeFilter, out var type) ? type : EconomyActivityType.Quest
+    };
   }
 
   private void OpenEditModal(EconomyActivitySummary activity)
@@ -242,12 +317,17 @@ else
 
   private async Task SaveEditAsync()
   {
-    if (editingActivityId is null || editingActivity is null)
+    if (editingActivity is null)
       return;
+
+    var isNew = editingActivityId is null;
 
     try
     {
-      await EconomyActivityAdminService.UpdateAsync(editingActivityId.Value, editingActivity.ToInput(), CancellationToken.None);
+      if (isNew)
+        await EconomyActivityAdminService.CreateAsync(editingActivity.ToInput(), CancellationToken.None);
+      else
+        await EconomyActivityAdminService.UpdateAsync(editingActivityId!.Value, editingActivity.ToInput(), CancellationToken.None);
     }
     catch (ArgumentException ex)
     {
@@ -257,7 +337,7 @@ else
 
     CloseEditModal();
     await ReloadAsync();
-    ToastService.ShowSuccess("Активность обновлена");
+    ToastService.ShowSuccess(isNew ? "Активность добавлена" : "Активность обновлена");
   }
 
   private async Task DeleteEditingActivityAsync()
@@ -275,17 +355,12 @@ else
     ToastService.ShowSuccess("Активность удалена");
   }
 
-  private static string GroupTitle(EconomyActivityType type) => type switch
-  {
-    EconomyActivityType.Quest => "Партийные задания",
-    EconomyActivityType.Downtime => "Простой",
-    _ => type.ToString()
-  };
-
   private static string FormatRange(decimal min, decimal max)
     => min == max ? FormatGold(min) : $"{FormatGold(min)} … {FormatGold(max)}";
 
   private static string FormatGold(decimal value) => value.ToString("0.##", CultureInfo.GetCultureInfo("ru-RU"));
+
+  private sealed record ActivityFiltersState(string SearchTerm, string Type, int? Level);
 
   private sealed class ActivityFormModel
   {
