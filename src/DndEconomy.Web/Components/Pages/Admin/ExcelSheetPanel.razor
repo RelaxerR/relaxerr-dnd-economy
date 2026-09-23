@@ -8,7 +8,11 @@
     <a class="btn btn--primary" href="@ExportUrl">Скачать текущее (.xlsx)</a>
   </p>
   <p class="catalog-meta">
-    Файл можно перезаливать — записи обновляются по ключу, а не дублируются. Из книги с
+    @if (!AlwaysReplaces)
+    {
+      <text>Файл можно перезаливать — записи обновляются по ключу, а не дублируются.</text>
+    }
+    Из книги с
     несколькими листами загрузится только лист «@SheetName» — остальные листы (если это тот
     же файл, что использует другая страница) игнорируются.
   </p>
@@ -77,7 +81,7 @@
   [Parameter, EditorRequired] public Func<Stream, bool, bool, CancellationToken, Task<EconomyImportSummary>> ImportFunc { get; set; } = default!;
 
   /// <summary>
-  /// Лист всегда полностью заменяется при загрузке (например, "Оплата заданий" — там нет
+  /// Лист всегда полностью заменяется при загрузке (например, "Экономическая активность" — там нет
   /// естественного ключа записи) — чекбокс не показывается, вместо него статичное предупреждение,
   /// но confirm-диалог с числом удаляемых записей перед загрузкой всё равно показывается.
   /// </summary>
@@ -162,7 +166,8 @@
     if (s.SeasonModifiersImported > 0) parts.Add($"коэф. сезона: {s.SeasonModifiersImported}");
     if (s.SessionsImported > 0) parts.Add($"сессий: {s.SessionsImported}");
     if (s.CoinAcceptancesImported > 0) parts.Add($"приём монет: {s.CoinAcceptancesImported}");
-    if (s.QuestPayRatesImported > 0) parts.Add($"заданий: {s.QuestPayRatesImported}");
+    if (s.EconomyActivitiesImported > 0) parts.Add($"активностей: {s.EconomyActivitiesImported}");
+    if (s.PartySizeCoefficientsImported > 0) parts.Add($"коэф. размера партии: {s.PartySizeCoefficientsImported}");
 
     var removedParts = new List<string>();
     if (s.ItemsRemoved > 0) removedParts.Add($"предметов: {s.ItemsRemoved}");
@@ -171,7 +176,8 @@
     if (s.SeasonModifiersRemoved > 0) removedParts.Add($"коэф. сезона: {s.SeasonModifiersRemoved}");
     if (s.SessionsRemoved > 0) removedParts.Add($"сессий: {s.SessionsRemoved}");
     if (s.CoinAcceptancesRemoved > 0) removedParts.Add($"приём монет: {s.CoinAcceptancesRemoved}");
-    if (s.QuestPayRatesRemoved > 0) removedParts.Add($"заданий: {s.QuestPayRatesRemoved}");
+    if (s.EconomyActivitiesRemoved > 0) removedParts.Add($"активностей: {s.EconomyActivitiesRemoved}");
+    if (s.PartySizeCoefficientsRemoved > 0) removedParts.Add($"коэф. размера партии: {s.PartySizeCoefficientsRemoved}");
 
     if (parts.Count == 0 && removedParts.Count == 0)
     {

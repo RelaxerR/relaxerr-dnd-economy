@@ -1,0 +1,373 @@
+@page "/admin/economy/income-calculator"
+@rendermode InteractiveServer
+@using System.Globalization
+@using DndEconomy.Application.Activities
+@using DndEconomy.Application.Import
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Domain.Entities
+@using DndEconomy.Domain.Enums
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IEconomyActivityAdminService EconomyActivityAdminService
+@inject IPartySizeCoefficientAdminService PartySizeCoefficientAdminService
+@inject IExcelEconomyImportService ExcelImportService
+@inject ToastService ToastService
+
+<PageTitle>Калькулятор дохода — админка Relaxerr</PageTitle>
+<ToastContainer />
+
+<h1>Экономические сессии и города</h1>
+<AdminNav />
+<EconomySubNav />
+
+<p class="catalog-meta">
+  Доход партии за период по справочнику <a href="/admin/activities">экономической активности</a>.
+  Задание платит <em>ставка × рекомендуемая длительность</em> на игрока за контракт (не от фактических дней),
+  с поправкой на размер партии: партия из N получает <em>N × выплата × коэф(N)</em>. Простой считается
+  для каждого персонажа отдельно, без коэффициента; «на персонажа» для простоя — средняя доля
+  (сумма по партии / N). Отрицательные суммы — расход.
+</p>
+
+@if (activities is null || coefficients is null)
+{
+  <p>Загрузка...</p>
+}
+else
+{
+  var result = Calculate();
+
+  <div class="admin-filter-row">
+    <div class="form-field">
+      <label>Уровень персонажей</label>
+      <input type="number" min="1" max="20" @bind="level" @bind:event="oninput" />
+    </div>
+    <div class="form-field">
+      <label>Размер партии</label>
+      <input type="number" min="1" @bind="partySize" @bind:event="oninput" />
+    </div>
+  </div>
+
+  <section class="auth-card income-calc__card">
+    <h2>Задания за период</h2>
+    @if (VisibleQuests.Count == 0)
+    {
+      <p class="catalog-meta">Нет заданий для @EffectiveLevel уровня — добавьте их на странице «Активность».</p>
+    }
+    else
+    {
+      <div class="admin-table-wrap">
+        <table class="admin-table admin-matrix-table">
+          <thead>
+            <tr>
+              <th>Категория</th>
+              <th>Опасность</th>
+              <th>Уровни</th>
+              <th>Ставка (зм/день)</th>
+              <th>Рек. дней</th>
+              <th>За контракт на персонажа, с коэф.</th>
+              <th>Контрактов</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach (var quest in VisibleQuests)
+            {
+              var questId = quest.Id;
+              <tr>
+                <td>@quest.Category</td>
+                <td>@(quest.DangerLevel is { } danger ? EconomyActivityLabels.Danger(danger) : "—")</td>
+                <td>@quest.MinLevel–@quest.MaxLevel</td>
+                <td>@FormatRange(new GoldRange(quest.RateMin, quest.RateMax))</td>
+                <td>@quest.RecommendedDurationDays</td>
+                <td>@FormatRange(new GoldRange(quest.RateMin, quest.RateMax) * (quest.RecommendedDurationDays * result.Coefficient.Coefficient))</td>
+                <td>
+                  <input type="number" min="0" class="admin-matrix-table__input"
+                         value="@questCounts.GetValueOrDefault(questId)"
+                         @oninput="e => questCounts[questId] = ParseNonNegative(e.Value)" />
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <section class="auth-card income-calc__card">
+    <h2>Простой за период</h2>
+    @if (VisibleDowntime.Count == 0)
+    {
+      <p class="catalog-meta">Нет занятий в простое для @EffectiveLevel уровня — добавьте их на странице «Активность».</p>
+    }
+    else
+    {
+      @if (downtimeRows.Count > 0)
+      {
+        <div class="admin-table-wrap">
+          <table class="admin-table admin-matrix-table">
+            <thead>
+              <tr>
+                <th>Занятие</th>
+                <th>Ставка (зм/день)</th>
+                <th>Дней</th>
+                <th>Персонажей</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var row in downtimeRows)
+              {
+                var activity = FindVisibleDowntime(row.ActivityId);
+                <tr>
+                  <td>
+                    <select @onchange="e => row.ActivityId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : row.ActivityId">
+                      @foreach (var option in VisibleDowntime)
+                      {
+                        <option value="@option.Id" selected="@(option.Id == row.ActivityId)">@option.Category (@option.MinLevel–@option.MaxLevel ур.)</option>
+                      }
+                    </select>
+                  </td>
+                  <td>@(activity is null ? "—" : FormatRange(new GoldRange(activity.RateMin, activity.RateMax)))</td>
+                  <td>
+                    <input type="number" min="0" class="admin-matrix-table__input"
+                           value="@row.Days" @oninput="e => row.Days = ParseNonNegative(e.Value)" />
+                  </td>
+                  <td>
+                    <input type="number" min="0" max="@EffectivePartySize" class="admin-matrix-table__input"
+                           value="@row.Characters" @oninput="e => row.Characters = ParseNonNegative(e.Value)" />
+                  </td>
+                  <td>
+                    <button type="button" class="btn admin-matrix-table__delete" @onclick="() => downtimeRows.Remove(row)">Убрать</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+      <button type="button" class="btn" @onclick="AddDowntimeRow">+ Добавить занятие</button>
+    }
+  </section>
+
+  <section class="auth-card income-calc__card">
+    <h2>Итого за период</h2>
+    <p class="catalog-meta">@CoefficientNote(result.Coefficient)</p>
+
+    <div class="income-calc__totals">
+      <div>
+        <div class="income-calc__total-label">На партию (@EffectivePartySize чел.)</div>
+        <div class="income-calc__total-value">@FormatRange(result.PartyTotal) зм</div>
+      </div>
+      <div>
+        <div class="income-calc__total-label">На персонажа</div>
+        <div class="income-calc__total-value">@FormatRange(result.PerCharacterTotal) зм</div>
+      </div>
+    </div>
+
+    @if (result.QuestLines.Count + result.DowntimeLines.Count > 0)
+    {
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Строка</th>
+              <th>На персонажа (зм)</th>
+              <th>На партию (зм)</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach (var line in result.QuestLines)
+            {
+              <tr>
+                <td>Задание: @line.Activity.Category × @questCounts.GetValueOrDefault(line.Activity.Id)</td>
+                <td>@FormatRange(line.PerCharacter)</td>
+                <td>@FormatRange(line.Party)</td>
+              </tr>
+            }
+            @foreach (var line in result.DowntimeLines)
+            {
+              <tr>
+                <td>Простой: @line.Activity.Category</td>
+                <td>@FormatRange(line.PerCharacter) <span class="catalog-meta">(в среднем)</span></td>
+                <td>@FormatRange(line.Party)</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <section class="auth-card income-calc__card">
+    <h2>Коэффициенты размера партии</h2>
+    <p class="catalog-meta">
+      Множитель к ставке на игрока за задание: 1 при одиночке, дальше убывает. Если строки для
+      размера нет — берётся ближайшая меньшая (для партии больше @PartySizeCoefficient.MaxPartySize —
+      последняя строка), без экстраполяции. Пустое поле — строки нет. Сохраняется при выходе из поля.
+    </p>
+    <div class="admin-table-wrap">
+      <table class="admin-table admin-matrix-table income-calc__coef-table">
+        <thead>
+          <tr>
+            <th>Размер партии</th>
+            <th>Коэффициент</th>
+            <th>Фактически применяется</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (var size = PartySizeCoefficient.MinPartySize; size <= PartySizeCoefficient.MaxPartySize; size++)
+          {
+            var partySizeRow = size;
+            var stored = coefficients.FirstOrDefault(x => x.PartySize == partySizeRow);
+            var effective = PartyIncomeCalculator.ResolveCoefficient(partySizeRow, coefficients);
+            <tr class="@(partySizeRow == Math.Min(EffectivePartySize, PartySizeCoefficient.MaxPartySize) ? "admin-table__row--current" : "")">
+              <td>@partySizeRow</td>
+              <td>
+                <input type="number" step="0.01" min="0.01" class="admin-matrix-table__input"
+                       value="@stored?.Coefficient.ToString("0.####", CultureInfo.InvariantCulture)"
+                       @onchange="e => SaveCoefficientAsync(partySizeRow, e.Value)" />
+              </td>
+              <td>@FormatGold(effective.Coefficient)@(effective.Source == PartySizeCoefficientSource.Exact ? "" : effective.SourcePartySize is { } from ? $" (как для {from})" : " (по умолчанию)")</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (coefficientError is not null)
+    {
+      <div class="status-message status-message--error">@coefficientError</div>
+    }
+  </section>
+
+  <ExcelSheetPanel Title="Размер партии" SheetName="Размер партии" ExportUrl="/api/admin/economy/party-size/export"
+                   ImportFunc="ExcelImportService.ImportPartySizeCoefficientsAsync" OnImported="ReloadCoefficientsAsync" />
+}
+
+@code {
+  private IReadOnlyList<EconomyActivitySummary>? activities;
+  private IReadOnlyList<PartySizeCoefficientSummary>? coefficients;
+
+  private int level = 1;
+  private int partySize = 4;
+  private readonly Dictionary<Guid, int> questCounts = [];
+  private readonly List<DowntimeRow> downtimeRows = [];
+  private string? coefficientError;
+
+  private int EffectiveLevel => Math.Clamp(level, EconomyActivityValidator.MinCharacterLevel, EconomyActivityValidator.MaxCharacterLevel);
+
+  private int EffectivePartySize => Math.Max(1, partySize);
+
+  private List<EconomyActivitySummary> VisibleQuests => ActivitiesForLevel(EconomyActivityType.Quest);
+
+  private List<EconomyActivitySummary> VisibleDowntime => ActivitiesForLevel(EconomyActivityType.Downtime);
+
+  protected override async Task OnInitializedAsync()
+  {
+    activities = await EconomyActivityAdminService.GetAllAsync(CancellationToken.None);
+    await ReloadCoefficientsAsync();
+  }
+
+  private async Task ReloadCoefficientsAsync()
+  {
+    coefficients = await PartySizeCoefficientAdminService.GetAllAsync(CancellationToken.None);
+  }
+
+  /// <summary>
+  /// Собирает вход калькулятора из того, что сейчас видно на странице: задания текущего
+  /// уровня с ненулевым числом контрактов и строки простоя с активностью текущего уровня.
+  /// Число персонажей в простое обрезается до размера партии, чтобы уменьшение размера
+  /// партии не ломало расчёт уже заполненных строк.
+  /// </summary>
+  private PartyIncomeResult Calculate()
+  {
+    var size = EffectivePartySize;
+
+    var quests = VisibleQuests
+      .Where(x => questCounts.GetValueOrDefault(x.Id) > 0)
+      .Select(x => new QuestContractInput(x, questCounts[x.Id]))
+      .ToList();
+
+    var downtime = downtimeRows
+      .Select(row => (Activity: FindVisibleDowntime(row.ActivityId), Row: row))
+      .Where(x => x.Activity is not null && x.Row.Days > 0 && x.Row.Characters > 0)
+      .Select(x => new DowntimeInput(x.Activity!, x.Row.Days, Math.Min(x.Row.Characters, size)))
+      .ToList();
+
+    return PartyIncomeCalculator.Calculate(new PartyIncomeInput
+    {
+      PartySize = size,
+      Quests = quests,
+      Downtime = downtime,
+      Coefficients = coefficients!
+    });
+  }
+
+  private List<EconomyActivitySummary> ActivitiesForLevel(EconomyActivityType type)
+    => activities!.Where(x => x.ActivityType == type && x.MinLevel <= EffectiveLevel && EffectiveLevel <= x.MaxLevel).ToList();
+
+  private EconomyActivitySummary? FindVisibleDowntime(Guid activityId)
+    => VisibleDowntime.FirstOrDefault(x => x.Id == activityId);
+
+  private void AddDowntimeRow()
+  {
+    var first = VisibleDowntime.FirstOrDefault();
+    if (first is null)
+      return;
+
+    downtimeRows.Add(new DowntimeRow { ActivityId = first.Id, Days = 1, Characters = EffectivePartySize });
+  }
+
+  private async Task SaveCoefficientAsync(int size, object? value)
+  {
+    var raw = value?.ToString();
+
+    try
+    {
+      if (string.IsNullOrWhiteSpace(raw))
+      {
+        await PartySizeCoefficientAdminService.DeleteAsync(size, CancellationToken.None);
+        ToastService.ShowSuccess($"Коэффициент для {size} удалён");
+      }
+      else if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var coefficient))
+      {
+        await PartySizeCoefficientAdminService.SetAsync(size, coefficient, CancellationToken.None);
+        ToastService.ShowSuccess($"Коэффициент для {size} сохранён");
+      }
+      else
+      {
+        return;
+      }
+
+      coefficientError = null;
+    }
+    catch (ArgumentException ex)
+    {
+      coefficientError = ex.Message;
+    }
+
+    await ReloadCoefficientsAsync();
+  }
+
+  private static int ParseNonNegative(object? value)
+    => int.TryParse(value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? Math.Max(0, parsed) : 0;
+
+  private string CoefficientNote(ResolvedPartySizeCoefficient resolved) => resolved.Source switch
+  {
+    PartySizeCoefficientSource.Exact =>
+      $"Коэффициент размера партии для {EffectivePartySize}: {FormatGold(resolved.Coefficient)}.",
+    PartySizeCoefficientSource.NearestLower =>
+      $"Коэффициент размера партии для {EffectivePartySize}: {FormatGold(resolved.Coefficient)} (строки для {EffectivePartySize} нет — взята строка для {resolved.SourcePartySize}).",
+    _ =>
+      $"Нет строки коэффициента для партии из {EffectivePartySize} или меньше — задания посчитаны с коэффициентом 1. Заполните таблицу ниже."
+  };
+
+  private static string FormatRange(GoldRange range)
+    => range.Min == range.Max ? FormatGold(range.Min) : $"{FormatGold(range.Min)} … {FormatGold(range.Max)}";
+
+  private static string FormatGold(decimal value) => value.ToString("#,0.##", CultureInfo.GetCultureInfo("ru-RU"));
+
+  private sealed class DowntimeRow
+  {
+    public Guid ActivityId { get; set; }
+    public int Days { get; set; }
+    public int Characters { get; set; }
+  }
+}

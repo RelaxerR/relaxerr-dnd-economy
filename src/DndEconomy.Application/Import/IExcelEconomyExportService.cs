@@ -23,6 +23,12 @@ public interface IExcelEconomyExportService
   /// <summary>Строит книгу .xlsx с листом "Приём монет" — матрица приёма номиналов и заметки по городам.</summary>
   Task<byte[]> ExportCoinAcceptanceAsync(CancellationToken cancellationToken);
 
-  /// <summary>Строит книгу .xlsx с листом "Оплата заданий" — справочник оплаты заданий мастера.</summary>
-  Task<byte[]> ExportQuestPayRatesAsync(CancellationToken cancellationToken);
+  /// <summary>
+  /// Строит книгу .xlsx с листом "Экономическая активность" — ставки дохода/расхода (зм/день
+  /// на игрока) для партийных заданий и занятий в простое.
+  /// </summary>
+  Task<byte[]> ExportEconomyActivitiesAsync(CancellationToken cancellationToken);
+
+  /// <summary>Строит книгу .xlsx с листом "Размер партии" — коэффициенты убывающей полезности партийных заданий.</summary>
+  Task<byte[]> ExportPartySizeCoefficientsAsync(CancellationToken cancellationToken);
 }

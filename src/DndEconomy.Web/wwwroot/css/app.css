@@ -592,6 +592,24 @@ body {
   background: rgba(139, 94, 52, 0.08);
 }
 
+/* Фильтры над таблицей справочника (см. AdminActivities.razor) — в одну строку, а не столбиком. */
+
+.admin-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.admin-filter-row .form-field {
+  min-width: 12rem;
+}
+
+.admin-table__group-header td {
+  font-weight: 600;
+  background: rgba(139, 94, 52, 0.06);
+}
+
 /* Модальное окно редактирования (см. AdminSessions.razor) */
 
 .modal-backdrop {
@@ -652,6 +670,36 @@ body {
   color: #b3261e;
   padding: 4px 12px;
   font-size: 0.85rem;
+}
+
+/* Калькулятор дохода партии (см. AdminIncomeCalculator.razor) — карточки во всю ширину,
+   итоги крупным шрифтом, чтобы диапазон читался с одного взгляда. */
+
+.income-calc__card {
+  max-width: none;
+  margin-bottom: 24px;
+}
+
+.income-calc__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  margin-bottom: 16px;
+}
+
+.income-calc__total-label {
+  font-size: 0.9rem;
+  color: rgba(29, 29, 31, 0.6);
+}
+
+.income-calc__total-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.income-calc__coef-table {
+  min-width: 0;
+  width: auto;
 }
 
 /* Разбор музыки */

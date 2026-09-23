@@ -1,0 +1,331 @@
+@page "/admin/activities"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using DndEconomy.Application.Activities
+@using DndEconomy.Application.Import
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Domain.Enums
+@attribute [Authorize(Roles = RoleNames.Admin)]
+@inject IEconomyActivityAdminService EconomyActivityAdminService
+@inject IExcelEconomyImportService ExcelImportService
+@inject IJSRuntime JSRuntime
+@inject ToastService ToastService
+
+<PageTitle>Экономическая активность — Relaxerr</PageTitle>
+<ToastContainer />
+
+<h1>Экономическая активность</h1>
+
+<p class="catalog-meta">
+  Ставки дохода/расхода в зм за день <strong>на одного игрока</strong> — партийные задания и занятия
+  в простое. Отрицательная ставка — расход (обучение, кутёж). Выплата за контракт — это
+  <em>ставка × рекомендуемая длительность</em>, считается один раз фиксированной суммой и не
+  пересчитывается от фактически потраченных у стола дней; бонусы за скорость и штрафы за срыв сроков —
+  на усмотрение мастера. Только для мастера, игроки эту страницу не видят. Доход партии за период —
+  на странице <a href="/admin/economy/income-calculator">калькулятора дохода</a>.
+</p>
+
+<div class="admin-filter-row">
+  <div class="form-field">
+    <label>Тип</label>
+    <select @bind="typeFilter">
+      <option value="">Все</option>
+      @foreach (var type in EconomyActivityLabels.TypeOrder)
+      {
+        <option value="@type">@EconomyActivityLabels.Type(type)</option>
+      }
+    </select>
+  </div>
+  <div class="form-field">
+    <label>Уровень персонажей</label>
+    <input type="number" @bind="levelFilter" @bind:event="oninput" min="1" max="20" placeholder="любой" />
+  </div>
+</div>
+
+@if (activities is null)
+{
+  <p>Загрузка...</p>
+}
+else if (activities.Count == 0)
+{
+  <p class="catalog-meta">Активностей пока нет — добавьте вручную или загрузите лист Excel ниже.</p>
+}
+else
+{
+  <div class="admin-table-wrap">
+    <table class="admin-table admin-table--clickable">
+      <thead>
+        <tr>
+          <th>Категория</th>
+          <th>Опасность</th>
+          <th>Уровни</th>
+          <th>Ставка (зм/день на игрока)</th>
+          <th>Рек. дней</th>
+          <th>За контракт на игрока (зм)</th>
+          <th class="admin-table__name-col">Описание</th>
+          <th class="admin-table__name-col">Примечание по балансу</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var typeGroup in FilteredActivities().GroupBy(x => x.ActivityType).OrderBy(g => g.Key))
+        {
+          <tr class="admin-table__group-header">
+            <td colspan="8">@GroupTitle(typeGroup.Key)</td>
+          </tr>
+          @foreach (var activity in typeGroup)
+          {
+            <tr @onclick="() => OpenEditModal(activity)">
+              <td>@activity.Category</td>
+              <td>@(activity.DangerLevel is { } danger ? EconomyActivityLabels.Danger(danger) : "—")</td>
+              <td>@activity.MinLevel–@activity.MaxLevel</td>
+              <td>@FormatRange(activity.RateMin, activity.RateMax)</td>
+              <td>@activity.RecommendedDurationDays</td>
+              <td>@FormatRange(activity.RateMin * activity.RecommendedDurationDays, activity.RateMax * activity.RecommendedDurationDays)</td>
+              <td class="admin-table__name-col">@activity.Description</td>
+              <td class="admin-table__name-col">@activity.BalanceNote</td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+<section class="auth-card">
+  <h2>Добавить активность</h2>
+  @if (createError is not null)
+  {
+    <div class="status-message status-message--error">@createError</div>
+  }
+  <EditForm Model="newActivity" OnValidSubmit="CreateActivityAsync" FormName="new-economy-activity">
+    <DataAnnotationsValidator />
+    <ValidationSummary class="validation-summary" />
+
+    @ActivityFields(newActivity)
+
+    <button type="submit" class="btn btn--primary">Добавить</button>
+  </EditForm>
+</section>
+
+@if (editingActivity is not null)
+{
+  <div class="modal-backdrop" @onclick="CloseEditModal">
+    <div class="modal-card" @onclick:stopPropagation="true">
+      <h2>Редактировать активность</h2>
+      @if (editError is not null)
+      {
+        <div class="status-message status-message--error">@editError</div>
+      }
+      <EditForm Model="editingActivity" OnValidSubmit="SaveEditAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="validation-summary" />
+
+        @ActivityFields(editingActivity)
+
+        <div class="modal-card__actions">
+          <button type="submit" class="btn btn--primary">Сохранить</button>
+          <button type="button" class="btn" @onclick="CloseEditModal">Отмена</button>
+          <button type="button" class="btn modal-card__delete" @onclick="DeleteEditingActivityAsync">Удалить</button>
+        </div>
+      </EditForm>
+    </div>
+  </div>
+}
+
+<ExcelSheetPanel Title="Экономическая активность" SheetName="Экономическая активность" ExportUrl="/api/admin/activities/export"
+                 ImportFunc="ExcelImportService.ImportEconomyActivitiesAsync" OnImported="ReloadAsync" AlwaysReplaces="true" />
+
+@code {
+  private IReadOnlyList<EconomyActivitySummary>? activities;
+  private string typeFilter = "";
+  private int? levelFilter;
+
+  private ActivityFormModel newActivity = new();
+  private string? createError;
+
+  private Guid? editingActivityId;
+  private ActivityFormModel? editingActivity;
+  private string? editError;
+
+  /// <summary>
+  /// Поля формы активности — общие для формы добавления и модалки редактирования. Выбор
+  /// опасности показывается только у заданий: у простоя её нет (сервис сбрасывает её в null).
+  /// </summary>
+  private RenderFragment ActivityFields(ActivityFormModel model) =>
+    @<text>
+      <div class="form-field">
+        <label>Тип</label>
+        <InputSelect @bind-Value="model.ActivityType">
+          @foreach (var type in EconomyActivityLabels.TypeOrder)
+          {
+            <option value="@type">@EconomyActivityLabels.Type(type)</option>
+          }
+        </InputSelect>
+      </div>
+      <div class="form-field"><label>Категория</label><InputText @bind-Value="model.Category" /></div>
+      @if (model.ActivityType == EconomyActivityType.Quest)
+      {
+        <div class="form-field">
+          <label>Опасность</label>
+          <InputSelect @bind-Value="model.DangerLevel">
+            @foreach (var danger in EconomyActivityLabels.DangerOrder)
+            {
+              <option value="@danger">@EconomyActivityLabels.Danger(danger)</option>
+            }
+          </InputSelect>
+        </div>
+      }
+      <div class="form-field"><label>Мин. уровень</label><InputNumber @bind-Value="model.MinLevel" min="1" max="20" /></div>
+      <div class="form-field"><label>Макс. уровень</label><InputNumber @bind-Value="model.MaxLevel" min="1" max="20" /></div>
+      <div class="form-field"><label>Ставка мин (зм/день на игрока)</label><InputNumber @bind-Value="model.RateMin" step="0.01" /></div>
+      <div class="form-field"><label>Ставка макс (зм/день на игрока)</label><InputNumber @bind-Value="model.RateMax" step="0.01" /></div>
+      <div class="form-field"><label>Рекомендуемая длительность (дни)</label><InputNumber @bind-Value="model.RecommendedDurationDays" min="1" /></div>
+      <div class="form-field"><label>Описание</label><InputTextArea @bind-Value="model.Description" rows="2" /></div>
+      <div class="form-field"><label>Примечание по балансу</label><InputTextArea @bind-Value="model.BalanceNote" rows="2" /></div>
+    </text>;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await ReloadAsync();
+  }
+
+  private async Task ReloadAsync()
+  {
+    activities = await EconomyActivityAdminService.GetAllAsync(CancellationToken.None);
+  }
+
+  private IEnumerable<EconomyActivitySummary> FilteredActivities()
+  {
+    IEnumerable<EconomyActivitySummary> result = activities!;
+
+    if (Enum.TryParse<EconomyActivityType>(typeFilter, out var type))
+      result = result.Where(x => x.ActivityType == type);
+
+    if (levelFilter is { } level)
+      result = result.Where(x => x.MinLevel <= level && level <= x.MaxLevel);
+
+    return result;
+  }
+
+  private async Task CreateActivityAsync()
+  {
+    try
+    {
+      await EconomyActivityAdminService.CreateAsync(newActivity.ToInput(), CancellationToken.None);
+    }
+    catch (ArgumentException ex)
+    {
+      createError = ex.Message;
+      return;
+    }
+
+    createError = null;
+    newActivity = new() { ActivityType = newActivity.ActivityType };
+    await ReloadAsync();
+    ToastService.ShowSuccess("Активность добавлена");
+  }
+
+  private void OpenEditModal(EconomyActivitySummary activity)
+  {
+    editingActivityId = activity.Id;
+    editError = null;
+    editingActivity = ActivityFormModel.From(activity);
+  }
+
+  private void CloseEditModal()
+  {
+    editingActivityId = null;
+    editingActivity = null;
+    editError = null;
+  }
+
+  private async Task SaveEditAsync()
+  {
+    if (editingActivityId is null || editingActivity is null)
+      return;
+
+    try
+    {
+      await EconomyActivityAdminService.UpdateAsync(editingActivityId.Value, editingActivity.ToInput(), CancellationToken.None);
+    }
+    catch (ArgumentException ex)
+    {
+      editError = ex.Message;
+      return;
+    }
+
+    CloseEditModal();
+    await ReloadAsync();
+    ToastService.ShowSuccess("Активность обновлена");
+  }
+
+  private async Task DeleteEditingActivityAsync()
+  {
+    if (editingActivityId is null)
+      return;
+
+    var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Удалить эту активность безвозвратно?");
+    if (!confirmed)
+      return;
+
+    await EconomyActivityAdminService.DeleteAsync(editingActivityId.Value, CancellationToken.None);
+    CloseEditModal();
+    await ReloadAsync();
+    ToastService.ShowSuccess("Активность удалена");
+  }
+
+  private static string GroupTitle(EconomyActivityType type) => type switch
+  {
+    EconomyActivityType.Quest => "Партийные задания",
+    EconomyActivityType.Downtime => "Простой",
+    _ => type.ToString()
+  };
+
+  private static string FormatRange(decimal min, decimal max)
+    => min == max ? FormatGold(min) : $"{FormatGold(min)} … {FormatGold(max)}";
+
+  private static string FormatGold(decimal value) => value.ToString("0.##", CultureInfo.GetCultureInfo("ru-RU"));
+
+  private sealed class ActivityFormModel
+  {
+    public EconomyActivityType ActivityType { get; set; } = EconomyActivityType.Quest;
+    [Required(ErrorMessage = "Укажите категорию")] public string Category { get; set; } = "";
+    public QuestDangerLevel DangerLevel { get; set; } = QuestDangerLevel.Standard;
+    [Range(1, 20)] public int MinLevel { get; set; } = 1;
+    [Range(1, 20)] public int MaxLevel { get; set; } = 4;
+    public decimal RateMin { get; set; }
+    public decimal RateMax { get; set; }
+    [Range(1, int.MaxValue, ErrorMessage = "Длительность — не меньше 1 дня")] public int RecommendedDurationDays { get; set; } = 1;
+    public string Description { get; set; } = "";
+    public string BalanceNote { get; set; } = "";
+
+    public NewEconomyActivityInput ToInput() => new()
+    {
+      ActivityType = ActivityType,
+      Category = Category,
+      DangerLevel = ActivityType == EconomyActivityType.Quest ? DangerLevel : null,
+      MinLevel = MinLevel,
+      MaxLevel = MaxLevel,
+      RateMin = RateMin,
+      RateMax = RateMax,
+      RecommendedDurationDays = RecommendedDurationDays,
+      Description = Description,
+      BalanceNote = BalanceNote
+    };
+
+    public static ActivityFormModel From(EconomyActivitySummary activity) => new()
+    {
+      ActivityType = activity.ActivityType,
+      Category = activity.Category,
+      DangerLevel = activity.DangerLevel ?? QuestDangerLevel.Standard,
+      MinLevel = activity.MinLevel,
+      MaxLevel = activity.MaxLevel,
+      RateMin = activity.RateMin,
+      RateMax = activity.RateMax,
+      RecommendedDurationDays = activity.RecommendedDurationDays,
+      Description = activity.Description,
+      BalanceNote = activity.BalanceNote ?? ""
+    };
+  }
+}

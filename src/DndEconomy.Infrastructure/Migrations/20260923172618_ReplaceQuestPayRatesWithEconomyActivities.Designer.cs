@@ -3,6 +3,7 @@ using System;
 using DndEconomy.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DndEconomy.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923172618_ReplaceQuestPayRatesWithEconomyActivities")]
+    partial class ReplaceQuestPayRatesWithEconomyActivities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -496,38 +499,6 @@ namespace DndEconomy.Infrastructure.Migrations
                     b.HasIndex("UserId", "IsRead");
 
                     b.ToTable("Notifications");
-                });
-
-            modelBuilder.Entity("DndEconomy.Domain.Entities.PartySizeCoefficient", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Coefficient")
-                        .HasPrecision(10, 4)
-                        .HasColumnType("numeric(10,4)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("PartySize")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PartySize")
-                        .IsUnique();
-
-                    b.ToTable("PartySizeCoefficients", t =>
-                        {
-                            t.HasCheckConstraint("CK_PartySizeCoefficients_CoefficientPositive", "\"Coefficient\" > 0");
-
-                            t.HasCheckConstraint("CK_PartySizeCoefficients_PartySizeRange", "\"PartySize\" >= 1 AND \"PartySize\" <= 8");
-                        });
                 });
 
             modelBuilder.Entity("DndEconomy.Domain.Entities.SeasonModifier", b =>

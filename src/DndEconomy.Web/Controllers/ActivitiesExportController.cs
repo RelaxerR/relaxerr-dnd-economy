@@ -6,22 +6,22 @@ using Microsoft.AspNetCore.Mvc;
 namespace DndEconomy.Web.Controllers;
 
 /// <summary>
-/// Отдаёт справочник оплаты заданий в виде .xlsx — своя точка входа (не
-/// <see cref="EconomyExportController"/>), потому что страница `/admin/quest-pay` — отдельная
+/// Отдаёт справочник экономической активности в виде .xlsx — своя точка входа (не
+/// <see cref="EconomyExportController"/>), потому что страница `/admin/activities` — отдельная
 /// вкладка рядом с каталогом, а не часть раздела «Города и сессии». Тот же паттерн, что
 /// <see cref="ItemsExportController"/>: обычная HTTP-ссылка, cookie-авторизация Identity
 /// действует и здесь.
 /// </summary>
 [ApiController]
-[Route("api/admin/quest-pay")]
+[Route("api/admin/activities")]
 [Authorize(Roles = RoleNames.Admin)]
-public sealed class QuestPayExportController : ControllerBase
+public sealed class ActivitiesExportController : ControllerBase
 {
   #region Поля и конструктор
 
   private readonly IExcelEconomyExportService _exportService;
 
-  public QuestPayExportController(IExcelEconomyExportService exportService)
+  public ActivitiesExportController(IExcelEconomyExportService exportService)
   {
     _exportService = exportService;
   }
@@ -30,12 +30,12 @@ public sealed class QuestPayExportController : ControllerBase
 
   #region Публичные методы
 
-  /// <summary>Лист "Оплата заданий" — справочник оплаты заданий мастера.</summary>
+  /// <summary>Лист "Экономическая активность" — ставки заданий и занятий в простое.</summary>
   [HttpGet("export")]
   public async Task<IActionResult> Export(CancellationToken cancellationToken)
   {
-    var content = await _exportService.ExportQuestPayRatesAsync(cancellationToken);
-    var fileName = $"oplata-zadaniy-{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
+    var content = await _exportService.ExportEconomyActivitiesAsync(cancellationToken);
+    var fileName = $"ekonomicheskaya-aktivnost-{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
 
     return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
   }

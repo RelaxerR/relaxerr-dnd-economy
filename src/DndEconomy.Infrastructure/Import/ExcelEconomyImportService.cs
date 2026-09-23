@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
+using DndEconomy.Application.Activities;
 using DndEconomy.Application.Import;
 using DndEconomy.Domain.Constants;
 using DndEconomy.Domain.Entities;
@@ -13,7 +14,7 @@ namespace DndEconomy.Infrastructure.Import;
 
 /// <summary>
 /// Разбирает листы таблицы экономики ("Предметы", "Города", "Сезонность", "Настройки",
-/// "Приём монет") и наполняет БД. Каждый лист импортируется отдельным публичным методом —
+/// "Приём монет", "Экономическая активность", "Размер партии") и наполняет БД. Каждый лист импортируется отдельным публичным методом —
 /// вызывается с профильной страницы админки (например, лист "Сезонность" — со страницы
 /// /admin/economy/season-modifiers), которая грузит файл целиком, но использует из него
 /// только свой лист, даже если в книге есть остальные (так один и тот же файл-мастер
@@ -29,7 +30,8 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   private const string SeasonsSheetName = "Сезонность";
   private const string SettingsSheetName = "Настройки";
   private const string CoinAcceptanceSheetName = "Приём монет";
-  private const string QuestPayRatesSheetName = "Оплата заданий";
+  private const string EconomyActivitiesSheetName = "Экономическая активность";
+  private const string PartySizeCoefficientsSheetName = "Размер партии";
 
   // Формат названия в исходнике: "Русское название [English Name]" — English опционален.
   [GeneratedRegex(@"^(?<ru>.+?)\s*(\[(?<en>.+)\])?$")]
@@ -52,23 +54,6 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
   private static readonly Dictionary<string, CoinDenomination> DenominationLabels =
     CoinDenominations.All.ToDictionary(x => x.DisplayName, x => x.Denomination);
-
-  private static readonly Dictionary<string, QuestEpoch> QuestEpochLabels = new()
-  {
-    ["I"] = QuestEpoch.I,
-    ["II"] = QuestEpoch.II,
-    ["III"] = QuestEpoch.III,
-    ["IV"] = QuestEpoch.IV
-  };
-
-  private static readonly Dictionary<string, QuestDangerLevel> QuestDangerLevelLabels = new()
-  {
-    ["Тривиальная"] = QuestDangerLevel.Trivial,
-    ["Лёгкая"] = QuestDangerLevel.Easy,
-    ["Стандартная"] = QuestDangerLevel.Standard,
-    ["Опасная"] = QuestDangerLevel.Dangerous,
-    ["Смертельная"] = QuestDangerLevel.Deadly
-  };
 
   private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
   private readonly ILogger<ExcelEconomyImportService> _logger;
@@ -188,21 +173,44 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
   }
 
   /// <inheritdoc />
-  public async Task<EconomyImportSummary> ImportQuestPayRatesAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
+  public async Task<EconomyImportSummary> ImportEconomyActivitiesAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
   {
     var summary = new EconomyImportSummary();
     using var workbook = OpenWorkbook(fileStream);
 
-    if (!workbook.Worksheets.TryGetWorksheet(QuestPayRatesSheetName, out var sheet))
+    if (!workbook.Worksheets.TryGetWorksheet(EconomyActivitiesSheetName, out var sheet))
     {
-      summary.Warnings.Add($"В файле не найден лист «{QuestPayRatesSheetName}» — ничего не импортировано.");
+      summary.Warnings.Add($"В файле не найден лист «{EconomyActivitiesSheetName}» — ничего не импортировано.");
       return summary;
     }
 
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-    await ImportQuestPayRatesAsync(dbContext, sheet, persist, summary, cancellationToken);
+    await ImportEconomyActivitiesAsync(dbContext, sheet, persist, summary, cancellationToken);
 
-    _logger.LogInformation("Импортирован лист «{Sheet}»: заданий {Count}, удалено {Removed} (persist={Persist})", QuestPayRatesSheetName, summary.QuestPayRatesImported, summary.QuestPayRatesRemoved, persist);
+    _logger.LogInformation(
+      "Импортирован лист «{Sheet}»: активностей {Count}, удалено {Removed} (persist={Persist})",
+      EconomyActivitiesSheetName, summary.EconomyActivitiesImported, summary.EconomyActivitiesRemoved, persist);
+    return summary;
+  }
+
+  /// <inheritdoc />
+  public async Task<EconomyImportSummary> ImportPartySizeCoefficientsAsync(Stream fileStream, bool replaceExisting, bool persist, CancellationToken cancellationToken)
+  {
+    var summary = new EconomyImportSummary();
+    using var workbook = OpenWorkbook(fileStream);
+
+    if (!workbook.Worksheets.TryGetWorksheet(PartySizeCoefficientsSheetName, out var sheet))
+    {
+      summary.Warnings.Add($"В файле не найден лист «{PartySizeCoefficientsSheetName}» — ничего не импортировано.");
+      return summary;
+    }
+
+    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    await ImportPartySizeCoefficientsAsync(dbContext, sheet, replaceExisting, persist, summary, cancellationToken);
+
+    _logger.LogInformation(
+      "Импортирован лист «{Sheet}»: коэф. размера партии {Count}, удалено {Removed} (persist={Persist})",
+      PartySizeCoefficientsSheetName, summary.PartySizeCoefficientsImported, summary.PartySizeCoefficientsRemoved, persist);
     return summary;
   }
 
@@ -778,57 +786,176 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
   #endregion
 
-  #region Импорт листа "Оплата заданий"
+  #region Импорт листа "Экономическая активность"
 
   /// <summary>
-  /// Импортирует справочник оплаты заданий. В отличие от остальных листов у строк нет
-  /// естественного ключа (несколько заданий одной Категории+Опасности+Эпохи — обычное дело,
-  /// это не матрица коэффициентов), поэтому загрузка всегда полностью заменяет текущее
-  /// содержимое таблицы содержимым листа, а не обновляет по ключу (нет параметра
-  /// <c>replaceExisting</c> — это единственный лист, где полная замена не опциональна).
+  /// Импортирует справочник экономической активности. У строк нет естественного ключа
+  /// (несколько активностей одного Типа+Категории+Уровней — обычное дело, это не матрица
+  /// коэффициентов), поэтому загрузка всегда полностью заменяет текущее содержимое таблицы
+  /// содержимым листа, а не обновляет по ключу (нет параметра <c>replaceExisting</c> —
+  /// полная замена здесь не опциональна). Строки, нарушающие инварианты
+  /// (<see cref="EconomyActivityValidator"/>), пропускаются с предупреждением.
   /// </summary>
-  private static async Task ImportQuestPayRatesAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
+  private static async Task ImportEconomyActivitiesAsync(ApplicationDbContext dbContext, IXLWorksheet sheet, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
   {
-    var newRates = new List<QuestPayRate>();
+    var newActivities = new List<EconomyActivity>();
 
     foreach (var row in sheet.RowsUsed().Skip(1))
     {
-      var epochLabel = row.Cell(1).GetString().Trim();
-      var category = row.Cell(2).GetString();
+      var typeLabel = row.Cell(1).GetString();
+      var category = row.Cell(2).GetString().Trim();
       var dangerLabel = row.Cell(3).GetString().Trim();
 
-      if (string.IsNullOrWhiteSpace(category) || !QuestEpochLabels.TryGetValue(epochLabel, out var epoch))
+      if (string.IsNullOrWhiteSpace(category))
       {
         continue;
       }
 
-      if (!QuestDangerLevelLabels.TryGetValue(dangerLabel, out var dangerLevel))
+      if (!EconomyActivityLabels.TryParseType(typeLabel, out var activityType))
       {
-        summary.Warnings.Add($"Задание «{category}» пропущено — не распознан уровень опасности «{dangerLabel}».");
+        summary.Warnings.Add($"Строка {row.RowNumber()} («{category}») пропущена — не распознан тип «{typeLabel}» (ожидается «Задание» или «Простой»).");
         continue;
       }
 
-      newRates.Add(new QuestPayRate
+      QuestDangerLevel? dangerLevel = null;
+      if (activityType == EconomyActivityType.Quest)
       {
-        Epoch = epoch,
+        if (!EconomyActivityLabels.TryParseDanger(dangerLabel, out var parsedDanger))
+        {
+          summary.Warnings.Add($"Строка {row.RowNumber()} («{category}») пропущена — не распознан уровень опасности «{dangerLabel}».");
+          continue;
+        }
+
+        dangerLevel = parsedDanger;
+      }
+
+      if (!row.Cell(4).TryGetValue<int>(out var minLevel) || !row.Cell(5).TryGetValue<int>(out var maxLevel)
+          || !row.Cell(6).TryGetValue<decimal>(out var rateMin) || !row.Cell(7).TryGetValue<decimal>(out var rateMax)
+          || !row.Cell(8).TryGetValue<int>(out var durationDays))
+      {
+        summary.Warnings.Add($"Строка {row.RowNumber()} («{category}») пропущена — уровни, ставки и длительность должны быть числами.");
+        continue;
+      }
+
+      var input = new NewEconomyActivityInput
+      {
+        ActivityType = activityType,
         Category = category,
         DangerLevel = dangerLevel,
-        Description = row.Cell(4).GetString(),
-        Duration = row.Cell(5).GetString(),
-        PartyPayment = row.Cell(6).GetValue<int>(),
-        BalanceNote = row.Cell(7).GetString()
+        MinLevel = minLevel,
+        MaxLevel = maxLevel,
+        RateMin = rateMin,
+        RateMax = rateMax,
+        RecommendedDurationDays = durationDays,
+        Description = row.Cell(9).GetString(),
+        BalanceNote = row.Cell(10).GetString()
+      };
+
+      var error = EconomyActivityValidator.Validate(input);
+      if (error is not null)
+      {
+        summary.Warnings.Add($"Строка {row.RowNumber()} («{category}») пропущена — {error}");
+        continue;
+      }
+
+      newActivities.Add(new EconomyActivity
+      {
+        ActivityType = input.ActivityType,
+        Category = input.Category,
+        DangerLevel = input.DangerLevel,
+        MinLevel = input.MinLevel,
+        MaxLevel = input.MaxLevel,
+        RateMin = input.RateMin,
+        RateMax = input.RateMax,
+        RecommendedDurationDays = input.RecommendedDurationDays,
+        Description = input.Description,
+        BalanceNote = string.IsNullOrWhiteSpace(input.BalanceNote) ? null : input.BalanceNote
       });
 
-      summary.QuestPayRatesImported++;
+      summary.EconomyActivitiesImported++;
     }
 
-    var existingRates = await dbContext.QuestPayRates.ToListAsync(cancellationToken);
-    summary.QuestPayRatesRemoved = existingRates.Count;
+    var existingActivities = await dbContext.EconomyActivities.ToListAsync(cancellationToken);
+    summary.EconomyActivitiesRemoved = existingActivities.Count;
 
     if (persist)
     {
-      dbContext.QuestPayRates.RemoveRange(existingRates);
-      dbContext.QuestPayRates.AddRange(newRates);
+      dbContext.EconomyActivities.RemoveRange(existingActivities);
+      dbContext.EconomyActivities.AddRange(newActivities);
+      await dbContext.SaveChangesAsync(cancellationToken);
+    }
+  }
+
+  #endregion
+
+  #region Импорт листа "Размер партии"
+
+  /// <summary>
+  /// Импортирует коэффициенты размера партии — строка на размер партии (колонка 1) с
+  /// коэффициентом (колонка 2). Обновление по естественному ключу — размеру партии; при
+  /// <paramref name="replaceExisting"/> размеры, которых нет в файле, удаляются. Повтор одного
+  /// размера в файле — побеждает последняя строка (с предупреждением).
+  /// </summary>
+  private static async Task ImportPartySizeCoefficientsAsync(
+    ApplicationDbContext dbContext, IXLWorksheet sheet, bool replaceExisting, bool persist, EconomyImportSummary summary, CancellationToken cancellationToken)
+  {
+    var existingBySize = await dbContext.PartySizeCoefficients.ToDictionaryAsync(x => x.PartySize, cancellationToken);
+    var touchedSizes = new HashSet<int>();
+
+    foreach (var row in sheet.RowsUsed().Skip(1))
+    {
+      if (row.Cell(1).IsEmpty())
+      {
+        continue;
+      }
+
+      if (!row.Cell(1).TryGetValue<int>(out var partySize) || !row.Cell(2).TryGetValue<decimal>(out var coefficient))
+      {
+        summary.Warnings.Add($"Строка {row.RowNumber()} пропущена — размер партии и коэффициент должны быть числами.");
+        continue;
+      }
+
+      var error = PartySizeCoefficientValidator.Validate(partySize, coefficient);
+      if (error is not null)
+      {
+        summary.Warnings.Add($"Строка {row.RowNumber()} пропущена — {error}");
+        continue;
+      }
+
+      if (!touchedSizes.Add(partySize))
+      {
+        summary.Warnings.Add($"Размер партии {partySize} встречается в файле несколько раз — взята строка {row.RowNumber()}.");
+      }
+      else
+      {
+        summary.PartySizeCoefficientsImported++;
+      }
+
+      if (existingBySize.TryGetValue(partySize, out var existing))
+      {
+        existing.Coefficient = coefficient;
+        existing.UpdatedAtUtc = DateTime.UtcNow;
+      }
+      else
+      {
+        var created = new PartySizeCoefficient { PartySize = partySize, Coefficient = coefficient };
+        dbContext.PartySizeCoefficients.Add(created);
+        existingBySize[partySize] = created;
+      }
+    }
+
+    if (replaceExisting)
+    {
+      var toRemove = existingBySize.Values.Where(x => !touchedSizes.Contains(x.PartySize)).ToList();
+      summary.PartySizeCoefficientsRemoved = toRemove.Count;
+      if (persist)
+      {
+        dbContext.PartySizeCoefficients.RemoveRange(toRemove);
+      }
+    }
+
+    if (persist)
+    {
       await dbContext.SaveChangesAsync(cancellationToken);
     }
   }
