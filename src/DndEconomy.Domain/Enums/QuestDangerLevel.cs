@@ -1,9 +1,10 @@
 namespace DndEconomy.Domain.Enums;
 
 /// <summary>
-/// Уровень опасности задания — координата в справочнике оплаты заданий
-/// (<see cref="DndEconomy.Domain.Entities.QuestPayRate"/>), не влияет ни на что за пределами
-/// этого справочника.
+/// Уровень опасности партийного задания — задаётся только у активностей
+/// <see cref="EconomyActivityType.Quest"/> в справочнике экономической активности
+/// (<see cref="DndEconomy.Domain.Entities.EconomyActivity"/>), у занятий в простое его нет.
+/// Не влияет ни на что за пределами этого справочника.
 /// </summary>
 public enum QuestDangerLevel
 {

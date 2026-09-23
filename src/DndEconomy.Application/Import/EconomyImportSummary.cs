@@ -14,7 +14,7 @@ public sealed class EconomyImportSummary
   public int SeasonModifiersImported { get; set; }
   public int SessionsImported { get; set; }
   public int CoinAcceptancesImported { get; set; }
-  public int QuestPayRatesImported { get; set; }
+  public int EconomyActivitiesImported { get; set; }
 
   /// <summary>
   /// Сколько записей удалено из-за полной замены (<c>replaceExisting: true</c>) — то, что было
@@ -26,11 +26,11 @@ public sealed class EconomyImportSummary
   public int SeasonModifiersRemoved { get; set; }
   public int SessionsRemoved { get; set; }
   public int CoinAcceptancesRemoved { get; set; }
-  public int QuestPayRatesRemoved { get; set; }
+  public int EconomyActivitiesRemoved { get; set; }
 
   /// <summary>Суммарно удалено по всем листам этого вызова — используется для confirm-диалога перед полной заменой.</summary>
   public int TotalRemoved =>
-    ItemsRemoved + CitiesRemoved + CityModifiersRemoved + SeasonModifiersRemoved + SessionsRemoved + CoinAcceptancesRemoved + QuestPayRatesRemoved;
+    ItemsRemoved + CitiesRemoved + CityModifiersRemoved + SeasonModifiersRemoved + SessionsRemoved + CoinAcceptancesRemoved + EconomyActivitiesRemoved;
 
   /// <summary>Предупреждения, не прервавшие импорт (например, пропущенная пустая строка).</summary>
   public List<string> Warnings { get; } = [];

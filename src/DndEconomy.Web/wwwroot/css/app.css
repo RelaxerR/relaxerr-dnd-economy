@@ -592,6 +592,24 @@ body {
   background: rgba(139, 94, 52, 0.08);
 }
 
+/* Фильтры над таблицей справочника (см. AdminActivities.razor) — в одну строку, а не столбиком. */
+
+.admin-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.admin-filter-row .form-field {
+  min-width: 12rem;
+}
+
+.admin-table__group-header td {
+  font-weight: 600;
+  background: rgba(139, 94, 52, 0.06);
+}
+
 /* Модальное окно редактирования (см. AdminSessions.razor) */
 
 .modal-backdrop {

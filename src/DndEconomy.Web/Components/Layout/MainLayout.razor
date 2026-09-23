@@ -16,7 +16,7 @@
           <a href="/catalog">Каталог</a>
           @if (context.User.IsInRole(RoleNames.Admin))
           {
-            <a href="/admin/quest-pay">Оплата заданий</a>
+            <a href="/admin/activities">Активность</a>
           }
           <a href="/profile">Профиль</a>
           <a href="/notifications">Уведомления@(unreadCount > 0 ? $" ({unreadCount})" : "")</a>
