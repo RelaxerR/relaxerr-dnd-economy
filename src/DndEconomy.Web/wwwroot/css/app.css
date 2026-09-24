@@ -244,11 +244,30 @@ body {
 }
 
 .catalog-toolbar input[type="search"],
+.catalog-toolbar input[type="number"],
 .catalog-toolbar select {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   font: inherit;
+}
+
+/* Подписанные поля в тулбаре (подпись над инпутом) — см. AdminActivities.razor,
+   AdminIncomeCalculator.razor; выравнивание по низу, чтобы поля стояли в одну линию. */
+.catalog-toolbar--labelled {
+  align-items: flex-end;
+}
+
+.catalog-toolbar__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: rgba(29, 29, 31, 0.6);
+}
+
+.catalog-toolbar input[type="number"] {
+  width: 10rem;
 }
 
 .catalog-meta {
@@ -672,13 +691,41 @@ body {
   font-size: 0.85rem;
 }
 
-/* Калькулятор дохода партии (см. AdminIncomeCalculator.razor) — карточки во всю ширину,
-   итоги крупным шрифтом, чтобы диапазон читался с одного взгляда. */
+/* Карточка во всю ширину контента — для страниц со справочником в одну колонку
+   (см. AdminActivities.razor, AdminIncomeCalculator.razor), где .admin-two-col тесен для
+   широкой таблицы. Заголовок карточки с кнопкой действия справа. */
 
-.income-calc__card {
+.admin-card--wide {
   max-width: none;
   margin-bottom: 24px;
 }
+
+.admin-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-card__header h2 {
+  margin: 0;
+}
+
+.admin-table__note {
+  margin: 4px 0 0;
+}
+
+.admin-matrix-table__select {
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+/* Итоги калькулятора дохода — крупным шрифтом, чтобы диапазон читался с одного взгляда. */
 
 .income-calc__totals {
   display: flex;
@@ -695,11 +742,6 @@ body {
 .income-calc__total-value {
   font-size: 1.6rem;
   font-weight: 600;
-}
-
-.income-calc__coef-table {
-  min-width: 0;
-  width: auto;
 }
 
 /* Разбор музыки */
