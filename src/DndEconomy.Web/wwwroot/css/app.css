@@ -769,9 +769,6 @@ body {
 @media (max-width: 700px) { .music-trees { grid-template-columns: 1fr; } }
 
 /* Chat and scheduling */
-.chat-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 1.5rem; }
-.chat-sidebar { display: flex; flex-direction: column; gap: .6rem; }
-.chat-feed { min-width: 0; }
 .chat-feed textarea, .chat-feed input:not([type=checkbox]), .calendar-editor input, .calendar-editor select { max-width: 100%; }
 .chat-feed label, .calendar-editor label, .scheduling-options label { display: block; margin: .7rem 0; }
 .chat-feed textarea { display: block; width: 100%; }
@@ -786,14 +783,6 @@ body {
 .session-window--2 { border-left-color: #cf5420; }
 .session-window--3 { border-left-color: #b62828; }
 .chat-mobile-toggle { display: none; }
-@media (max-width: 700px) {
-  .chat-shell { grid-template-columns: minmax(0, 1fr); }
-  .chat-sidebar { display: none; }
-  .chat-sidebar--open { display: flex; }
-  .chat-mobile-toggle { display: inline-block; }
-  .chat-message { padding: .7rem; }
-  .chat-message .btn { min-height: 40px; }
-}
 .chat-sidebar label { display: flex; flex-direction: column; gap: .3rem; }
 .chat-shell input:not([type=checkbox]), .chat-shell textarea, .calendar-editor input, .calendar-editor select, .scheduling-options input, .scheduling-options select {
   font: inherit; padding: .5rem; border: 1px solid #b9a88d; border-radius: .4rem;
@@ -805,4 +794,142 @@ body {
   .app-header__user { overflow-wrap: anywhere; }
   .app-content { padding: 24px 16px; }
   .chat-shell input[type=file] { width: 100%; }
+}
+
+/* Messenger: a fixed conversation frame with independently scrolling history. */
+.chat-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: auto; flex: 1; min-height: 0; gap: 0; border: 1px solid #ded8ce; border-radius: 18px; background: #fffdf9; overflow: hidden; }
+.chat-sidebar { display: flex; flex-direction: column; gap: .6rem; padding: 18px; overflow-y: auto; background: #f4f0e9; border-right: 1px solid #ded8ce; }
+.chat-sidebar h2 { margin: 0 0 12px; font-size: 1.15rem; }
+.chat-sidebar > .btn { text-align: left; display: flex; justify-content: space-between; gap: 8px; white-space: normal; }
+.chat-badge { border-radius: 12px; padding: 0 7px; background: #714a2a; color: white; font-size: .8rem; }
+.chat-feed { position: relative; min-width: 0; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.chat-conversation-header { display: flex; align-items: center; gap: 12px; padding: 16px 22px; border-bottom: 1px solid #e6dfd3; }
+.chat-conversation-header h2 { margin: 0; font-size: 1.2rem; }
+.chat-conversation-header small { color: #776e63; }
+.chat-history { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; overflow-anchor: none; padding: 12px 22px; }
+.chat-history > .chat-message { width: fit-content; max-width: 88%; min-width: 140px; margin: 10px auto 10px 0; padding: 12px 15px; background: #f0ede7; border: 1px solid #e2d9cc; border-radius: 14px 14px 14px 3px; }
+.chat-history > .chat-message--own { margin-left: auto; margin-right: 0; background: #e7efe5; border-color: #cddcc7; border-radius: 14px 14px 3px 14px; }
+.chat-history > .chat-message--highlight { border-left: 4px solid #a37225; }
+.chat-message header { font-size: .82rem; }
+.chat-message time { color: #746c60; }
+.chat-text { margin: .5rem 0; }
+.chat-date { text-align: center; font-size: .78rem; color: #71685c; margin: 18px 0; }
+.chat-message footer { justify-content: flex-end; }
+.chat-shell .chat-message-menu { margin: 0; }
+.chat-message-menu > summary { cursor: pointer; list-style: none; padding: 4px 12px; min-height: 32px; border-radius: 8px; }
+.chat-message-menu > summary::-webkit-details-marker { display: none; }
+.chat-message-menu[open] { width: 100%; }
+.chat-menu-actions { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 8px; border-top: 1px solid #d9d0c2; }
+.chat-menu-actions p { width: 100%; font-size: .8rem; }
+.chat-composer { padding: 10px 18px 14px; border-top: 1px solid #e6dfd3; background: #fffdf9; max-height: 48%; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chat-composer > label:has(textarea), .chat-composer > p, .chat-composer > label:has(input[type=checkbox]) { width: 100%; margin: 0; }
+.chat-composer textarea { resize: vertical; min-height: 66px; max-height: 150px; background: white; }
+.chat-composer > details { margin: 0; }
+.chat-composer > details > summary { cursor: pointer; padding: 8px; font-size: .88rem; }
+.chat-composer > details[open] { flex-basis: 100%; }
+.chat-typing:empty { display: none; }
+.chat-composer .chat-attachment { position: relative; display: inline-flex; margin: 0; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 8px; background: #f0ede7; overflow: hidden; }
+.chat-attachment input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; max-width: 100%; }
+.chat-attachment:focus-within { outline: 2px solid #8b5f32; }
+.chat-message--target { outline: 3px solid #b88c42; outline-offset: 3px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+:where(button, summary, a, input, textarea, select):focus-visible { outline: 3px solid #9b713c; outline-offset: 3px; }
+
+/* Availability: empty time stays empty; actual expanded intervals occupy lanes. */
+.calendar-heading, .calendar-toolbar, .calendar-day-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.calendar-heading { justify-content: space-between; }
+.calendar-heading h1 { margin-bottom: 4px; }
+.calendar-heading p, .calendar-hint { color: #736a5e; font-size: .88rem; }
+.calendar-toolbar { margin: 14px 0; }
+.calendar-toolbar strong { margin-right: auto; }
+.calendar-day-actions { padding: 10px 0; }
+.calendar-day-actions strong { margin-right: auto; }
+.calendar-days { display: flex; gap: 5px; margin: 12px 0; }
+.calendar-days .btn { flex: 1; min-width: 0; padding: 6px; }
+.calendar-request { padding: 10px; background: #f4e7cb; border-radius: 8px; }
+.calendar-in-request { box-shadow: inset 0 3px #bb8c39; }
+.calendar-scroll { height: 65dvh; min-height: 360px; overflow-y: auto; border: 1px solid #ded8ce; border-radius: 12px; background: #fffdf9; }
+.calendar-grid { display: grid; grid-template-columns: 52px repeat(7, minmax(0, 1fr)); min-width: 0; }
+.calendar-column-title { height: 46px; position: sticky; top: 0; z-index: 3; display: block; width: 100%; border: 0; border-bottom: 1px solid #ded8ce; background: #f3eee5; font: inherit; font-size: .8rem; text-align: center; padding: 12px 0; }
+.calendar-hours > div:not(:first-child) { height: 64px; font-size: .72rem; text-align: center; color: #7c7264; }
+.calendar-day { min-width: 0; border-left: 1px solid #e9e3d9; }
+.calendar-track { position: relative; height: 1536px; }
+.calendar-slot { height: 64px; width: 100%; display: block; border: 0; border-bottom: 1px solid #e9e3d9; background: transparent; cursor: crosshair; }
+.calendar-slot:hover { background: #f5efdf; }
+.calendar-block { position: absolute; border: 1px solid; border-left-width: 3px; border-radius: 5px; padding: 3px; font: inherit; font-size: .7rem; overflow: hidden; text-align: left; cursor: pointer; min-height: 8px; }
+.calendar-block strong, .calendar-block span, .calendar-block small { display: block; }
+.calendar-block.session-window--0 { background: #e0efdf; color: #245333; border-color: #63966b; }
+.calendar-block.session-window--1 { background: #faf0cb; color: #665018; border-color: #b29131; }
+.calendar-block.session-window--2 { background: #fbe3d1; color: #803d20; border-color: #cb7a42; }
+.calendar-block.session-window--3 { background: #f4dddd; color: #7f3030; border-color: #bd6767; }
+.calendar-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 31; width: min(510px, calc(100vw - 32px)); max-height: 86dvh; overflow-y: auto; margin: 0; padding: 22px; background: #fffdf9; }
+.calendar-dialog header { display: flex; align-items: center; justify-content: space-between; }
+.calendar-dialog h2 { font-size: 1.25rem; margin: 0; }
+.calendar-editor input, .calendar-editor select { width: 100%; min-width: 0; box-sizing: border-box; }
+.calendar-weekdays { display: flex; gap: 3px; flex-wrap: wrap; }
+.calendar-weekdays .btn { padding: 9px; }
+.calendar-tools { margin-top: 18px; padding: 14px; border: 1px solid #ded8ce; border-radius: 12px; }
+.calendar-tools summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 700px) {
+  .chat-shell { grid-template-columns: minmax(0, 1fr); }
+  .chat-mobile-toggle { display: inline-block; }
+  .chat-shell .chat-sidebar { display: none; border: 0; }
+  .chat-shell--list .chat-sidebar { display: flex; }
+  .chat-shell--list .chat-feed { display: none; }
+  .chat-history { padding: 8px 10px; }
+  .chat-conversation-header { padding: 10px; }
+  .chat-composer { padding: 8px 10px; }
+  .chat-history > .chat-message { max-width: 94%; }
+  .chat-composer .btn { padding: 9px 12px; }
+  .calendar-grid { grid-template-columns: 45px minmax(0, 1fr); }
+  .calendar-day { display: none; }
+  .calendar-day--selected { display: block; }
+  .calendar-day-actions .btn { font-size: .8rem; padding: 10px; }
+  .calendar-day-actions strong { width: 100%; }
+  .calendar-toolbar strong { width: 100%; order: -1; }
+  .calendar-block { font-size: .85rem; padding: 5px; }
+  .calendar-days .btn { font-size: .8rem; }
+}
+.calendar-dialog::backdrop { background: #24190d55; }
+.calendar-dialog { border: 1px solid #ded8ce; color: inherit; }
+.calendar-slot { text-align: left; font: inherit; font-size: .7rem; color: #746b60; }
+.app-content:has(.chat-shell), .app-content:has(.calendar-grid) { max-width: 1360px; padding: 24px; }
+.app-shell:has(.chat-shell) { height: 100dvh; }
+.app-content:has(.chat-shell) { display: flex; flex-direction: column; min-height: 0; }
+.chat-composer > .chat-typing { font-size: .8rem; color: #776e63; margin: 0; }
+@media (max-width: 700px) {
+  .app-content:has(.chat-shell) { padding: 10px; }
+  .app-content:has(.calendar-grid) { padding: 18px 12px; }
+  .app-header:has(+ .app-content .chat-shell) { padding: 10px 14px; }
+  .app-header:has(+ .app-content .chat-shell) .app-header__nav { gap: 6px 10px; font-size: .8rem; }
+  .chat-composer { flex-shrink: 0; max-height: 55%; }
+}
+.chat-new { margin-left: 6px; font-size: .7rem; color: #4c683f; }
+.chat-composer > .btn--primary { margin-left: auto; }
+.calendar-heading h1 { font-size: 1.75rem; margin: 0; }
+.calendar-heading p { margin: 6px 0; }
+.calendar-toolbar { margin: 8px 0; }
+.calendar-day-actions { padding: 4px 0; }
+.calendar-hint { margin: 8px 0; }
+.calendar-days { margin: 8px 0; }
+.calendar-scroll { height: calc(100dvh - 340px); }
+.calendar-block { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; }
+.chat-jump { position: absolute; bottom: 180px; align-self: center; box-shadow: 0 3px 15px #0002; background: #f8edda; }
+.chat-send-icon { display: none; }
+.chat-compose-more[open] > details { margin: 10px 0; }
+@media (max-width: 700px) {
+  .chat-send-label, .chat-calendar-label { display: none; }
+  .chat-send-icon { display: inline; }
+  .chat-composer .chat-send, .chat-composer .chat-calendar { min-width: 40px; text-align: center; }
+}
+@media (max-width: 700px) {
+  .app-header:has(+ .app-content .calendar-grid) { padding: 10px 14px; }
+  .app-header:has(+ .app-content .calendar-grid) .app-header__nav { gap: 6px 10px; font-size: .8rem; }
+  .calendar-heading h1 { font-size: 1.35rem; }
+  .calendar-heading p { font-size: .75rem; }
+  .calendar-heading > a { padding: 8px; font-size: .8rem; }
+  .calendar-toolbar > .btn--primary, .calendar-toolbar > a { font-size: 0; min-width: 40px; padding: 8px; text-align: center; }
+  .calendar-toolbar > .btn--primary::after { content: '+'; font-size: 1.1rem; }
+  .calendar-toolbar > a::after { content: '⚙'; font-size: 1.1rem; }
+  .calendar-hint { display: none; }
 }

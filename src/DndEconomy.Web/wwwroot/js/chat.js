@@ -1,4 +1,46 @@
-window.chatUi = { visible: () => document.visibilityState === 'visible' && document.hasFocus(), scroll: id => requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })) };
+window.chatUi = {
+  visible: () => document.visibilityState === 'visible' && document.hasFocus(),
+  calendarScroll(hour) { const el = document.querySelector(".calendar-scroll"); if (el) el.scrollTop = hour * 64; },
+  openDialog(id) { const el = document.getElementById(id); if (el && !el.open) el.showModal(); },
+  mobile: () => matchMedia('(max-width: 700px)').matches,
+  capture() {
+    const el = document.getElementById('chat-history');
+    if (!el) return true;
+    const rect = el.getBoundingClientRect();
+    const anchor = [...el.querySelectorAll('article[id]')].find(x => x.getBoundingClientRect().bottom > rect.top);
+    this.position = { bottom: el.scrollHeight - el.scrollTop - el.clientHeight < 60,
+      top: el.scrollTop, id: anchor?.id, offset: anchor ? anchor.getBoundingClientRect().top - rect.top : 0 };
+    return this.position.bottom;
+  },
+  restore() {
+    const el = document.getElementById('chat-history'), p = this.position;
+    if (!el || !p) return;
+    if (p.bottom) el.scrollTop = el.scrollHeight;
+    else {
+      const anchor = document.getElementById(p.id);
+      if (anchor) el.scrollTop += anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - p.offset;
+      else el.scrollTop = p.top;
+    }
+    this.position = null;
+  },
+  visibleMessages() {
+    const el = document.getElementById('chat-history');
+    if (!el || !el.getClientRects().length) return [];
+    const rect = el.getBoundingClientRect();
+    return [...el.querySelectorAll('article[id]')].filter(x => {
+      const r = x.getBoundingClientRect(); return r.bottom > rect.top && r.top < rect.bottom;
+    }).map(x => x.id);
+  },
+  scroll(id) {
+    requestAnimationFrame(() => {
+      const target = document.getElementById(id), el = document.getElementById('chat-history');
+      if (!target || !el) return;
+      if (id === 'chat-bottom') el.scrollTop = el.scrollHeight;
+      else { el.scrollTop += target.getBoundingClientRect().top - el.getBoundingClientRect().top - 24;
+        target.classList.add('chat-message--target'); }
+    });
+  }
+};
 window.chatPush = {
   bind(reference, publicKey) {
     const button = document.getElementById('chat-push-enable');

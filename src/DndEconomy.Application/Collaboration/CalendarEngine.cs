@@ -3,7 +3,11 @@ using DndEconomy.Domain.Collaboration;
 namespace DndEconomy.Application.Collaboration;
 
 /// <summary>Непересекающийся абсолютный отрезок календаря.</summary>
-public sealed record AvailabilitySlice(Guid UserId, DateTime StartUtc, DateTime EndUtc, AvailabilityStatus Status, PlayFormat Format);
+public sealed record AvailabilitySlice(Guid UserId, DateTime StartUtc, DateTime EndUtc, AvailabilityStatus Status, PlayFormat Format)
+{
+  /// <summary>Правило, определившее фактический статус отрезка.</summary>
+  public Guid RuleId { get; init; }
+}
 /// <summary>Участник предлагаемого состава с фактическим приходом.</summary>
 public sealed record Arrival(Guid UserId, DateTime AtUtc, AvailabilityStatus Status);
 /// <summary>Вариант с устойчивым ключом, составом, альтернативами и причиной цвета.</summary>
@@ -67,7 +71,7 @@ public static class CalendarEngine
           .OrderBy(x => x.Rule.Repeat == RepeatKind.Once ? 0 : 1)
           .ThenByDescending(x => x.Rule.UpdatedUtc).ThenBy(x => x.Rule.Id).FirstOrDefault();
         if (winner.Rule is not null)
-          result.Add(new(user.Key, points[i], points[i + 1], winner.Rule.Status, format));
+          result.Add(new(user.Key, points[i], points[i + 1], winner.Rule.Status, format) { RuleId = winner.Rule.Id });
       }
     }
     return result;

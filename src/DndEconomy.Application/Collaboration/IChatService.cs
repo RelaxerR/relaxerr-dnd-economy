@@ -10,7 +10,11 @@ public sealed record MessageView(ChatMessage Message, List<Guid> ReadBy, List<Ch
   ChatPoll? Poll, List<PollOption> Options, List<PollVote> Votes);
 /// <summary>Снимок комнаты. Повторное чтение восстанавливает изменения и удаления после reconnect.</summary>
 public sealed record ChatSnapshot(ChatRoom CurrentRoom, List<ChatRoom> Rooms, List<MessageView> Messages, List<ChatMessage> Pinned, List<ChatPerson> People,
-  List<Guid> Online, List<Guid> Typing, List<SchedulingRequest> Requests, List<ScheduledGame> Games, List<SchedulingBallot> Ballots);
+  List<Guid> Online, List<Guid> Typing, List<SchedulingRequest> Requests, List<ScheduledGame> Games, List<SchedulingBallot> Ballots)
+{
+  /// <summary>Непрочитанные доступные сообщения по комнатам.</summary>
+  public Dictionary<Guid, int> Unread { get; init; } = [];
+}
 
 /// <summary>Серверные операции чата, каждая повторно проверяет актуальный Identity и область доступа.</summary>
 public interface IChatService
