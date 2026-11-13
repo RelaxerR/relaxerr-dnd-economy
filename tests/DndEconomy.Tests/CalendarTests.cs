@@ -104,4 +104,32 @@ public sealed class CalendarTests
     Assert.Empty(CalendarEngine.Expand([r], from, from.AddMonths(1)));
     Assert.Equal(8, CalendarEngine.Expand([r], from.AddMonths(1), from.AddMonths(2)).Sum(x => (x.EndUtc - x.StartUtc).TotalHours));
   }
+  [Fact]
+  public void ExpandedSlicesKeepSourceForEditingExceptionsAndSeries()
+  {
+    var repeat = new AvailabilityRule { UserId = Master, Zone = "Europe/Samara", Repeat = RepeatKind.Weekly,
+      Days = [2], LocalStart = new(2026, 12, 1, 23, 0, 0), LocalEnd = new(2026, 12, 31, 2, 0, 0) };
+    var exception = new AvailabilityRule { UserId = Master, Zone = "Europe/Samara", Format = PlayFormat.Online,
+      StartUtc = new(2026, 12, 1, 20, 0, 0, DateTimeKind.Utc), EndUtc = new(2026, 12, 1, 21, 0, 0, DateTimeKind.Utc), Status = AvailabilityStatus.Unavailable };
+    var slices = CalendarEngine.Expand([repeat, exception], Start, Start.AddHours(8));
+    Assert.Contains(slices, x => x.RuleId == repeat.Id && x.Format == PlayFormat.Offline && x.StartUtc == Start);
+    Assert.Contains(slices, x => x.RuleId == exception.Id && x.Status == AvailabilityStatus.Unavailable);
+    Assert.DoesNotContain(slices, x => x.RuleId == repeat.Id && x.Format == PlayFormat.Online && x.StartUtc == exception.StartUtc);
+    Assert.Equal(3, slices.Where(x => x.Format == PlayFormat.Offline).Sum(x => (x.EndUtc - x.StartUtc).TotalHours));
+  }
+
+  [Theory]
+  [InlineData(3, 28, 23)]
+  [InlineData(10, 24, 25)]
+  public void OvernightWindowsFollowActualDstDayLength(int month, int day, int hours)
+  {
+    var start = new DateTime(2026, month, day, 23, 0, 0);
+    var end = start.AddDays(1).Date.AddHours(4);
+    var rule = new AvailabilityRule { UserId = Master, Zone = "Europe/Berlin", Repeat = RepeatKind.Daily,
+      LocalStart = start, LocalEnd = start.AddDays(3).Date.AddHours(4) };
+    var from = CalendarEngine.ToUtc(start, rule.Zone); var until = CalendarEngine.ToUtc(end, rule.Zone);
+    var slices = CalendarEngine.Expand([rule], from, until);
+    Assert.Equal(hours == 23 ? 4 : 6, slices.Where(x => x.Format == PlayFormat.Online).Sum(x => (x.EndUtc - x.StartUtc).TotalHours));
+    Assert.All(slices, x => Assert.Equal(rule.Id, x.RuleId));
+  }
 }

@@ -63,6 +63,10 @@ public sealed partial class ChatService(IDbContextFactory<ApplicationDbContext> 
     var rooms = await ChatAccess.Rooms(db, a).AsNoTracking()
       .Where(x => !x.IsThread || (archive ? x.ActivityUtc <= cutoff : x.ActivityUtc > cutoff))
       .OrderByDescending(x => x.IsMain).ThenByDescending(x => x.ActivityUtc).ToListAsync();
+    var roomIds = rooms.Select(x => x.Id).ToArray();
+    var unread = await ChatAccess.Messages(db, a).Where(x => roomIds.Contains(x.RoomId) && x.AuthorId != a.Id &&
+      !db.Set<ChatRead>().Any(r => r.MessageId == x.Id && r.UserId == a.Id))
+      .GroupBy(x => x.RoomId).Select(g => new { Room = g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Room, x => x.Count);
     var messages = await ChatAccess.Messages(db, a).AsNoTracking().Where(x => x.RoomId == room)
       .OrderByDescending(x => x.CreatedUtc).ThenByDescending(x => x.Id).Take(Math.Max(take, 1)).ToListAsync();
     var pinned = await ChatAccess.Messages(db, a).AsNoTracking().Where(x => x.RoomId == room && x.Highlighted).OrderBy(x => x.CreatedUtc).ToListAsync();
@@ -90,7 +94,7 @@ public sealed partial class ChatService(IDbContextFactory<ApplicationDbContext> 
       return new MessageView(m, reads.Where(x => x.MessageId == m.Id).Select(x => x.UserId).ToList(),
         files.Where(x => x.MessageId == m.Id).ToList(), poll, opts, votes.Where(x => opts.Any(o => o.Id == x.OptionId)).ToList());
     }).ToList(), pinned, people, presence.Select(x => x.UserId).Distinct().ToList(),
-      presence.Where(x => x.RoomId == room && x.TypingUntilUtc > Now && x.UserId != a.Id).Select(x => x.UserId).Distinct().ToList(), requests, games, ballots);
+      presence.Where(x => x.RoomId == room && x.TypingUntilUtc > Now && x.UserId != a.Id).Select(x => x.UserId).Distinct().ToList(), requests, games, ballots) { Unread = unread };
   }
 
   /// <inheritdoc />

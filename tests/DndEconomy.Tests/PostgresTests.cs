@@ -78,6 +78,12 @@ public sealed class PostgresTests
       Assert.Contains(await chat.Notices(principals[2]), n => n.MessageId == dm);
       Assert.DoesNotContain(await chat.Notices(principals[3]), n => n.MessageId == dm);
       Assert.DoesNotContain(await chat.Notices(principals[0]), n => n.MessageId == dm);
+      var recipientBeforeRead = await chat.Snapshot(principals[2], room, 50, false);
+      Assert.Equal(1, recipientBeforeRead.Unread[room]);
+      Assert.False((await chat.Snapshot(principals[3], room, 50, false)).Unread.ContainsKey(room));
+      Assert.False((await chat.Snapshot(principals[1], room, 50, false)).Unread.ContainsKey(room));
+      await chat.Read(principals[2], room, [dm]);
+      Assert.False((await chat.Snapshot(principals[2], room, 50, false)).Unread.ContainsKey(room));
       var thread = await chat.Thread(principals[2], dm);
       await chat.Send(principals[2], thread, "private reply", []);
       var outsider = await chat.Snapshot(principals[3], room, 50, false);
