@@ -1,0 +1,262 @@
+@page "/chat"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@using System.Security.Claims
+@using System.Globalization
+@using System.Text.RegularExpressions
+@using DndEconomy.Application.Collaboration
+@using DndEconomy.Domain.Collaboration
+@using DndEconomy.Domain.Constants
+@inject IChatService Chat
+@inject ISchedulingService Scheduling
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Чат — Relaxerr</PageTitle>
+<h1>Чат</h1>
+<p><a href="/calendar">📅 Мой календарь</a> · <a href="/chat-settings">Цвет имени и уведомления</a></p>
+@if (error is not null) { <p role="alert" class="status-message">@error</p> }
+<div class="chat-shell">
+  <aside class="chat-sidebar @(showList ? "chat-sidebar--open" : "")">
+    <button class="btn" @onclick="ToggleArchive">@(archive ? "Активные" : "Архив веток")</button>
+    @if (snapshot is not null)
+    {
+      @foreach (var r in snapshot.Rooms)
+      {
+        <button class="btn @(r.Id == room ? "btn--primary" : "")" @onclick="() => OpenRoom(r.Id)">@(r.Readers.Length > 0 ? "🔒 " : "")@r.Name</button>
+      }
+    }
+    @if (admin)
+    {
+      <label>Новый чат<input @bind="newRoom" maxlength="200" /></label>
+      <button class="btn" @onclick="CreateRoom">Создать чат</button>
+    }
+    <label>Поиск по доступной истории<input type="search" @bind="search" maxlength="200" /></label>
+    <button class="btn" @onclick="Find">Найти</button>
+    @foreach (var hit in hits)
+    {
+      <button class="btn chat-search-result" @onclick="() => OpenMessage(hit.Id)">@hit.Text</button>
+    }
+    @if (snapshot is not null)
+    {
+      <p>Онлайн: @Names(snapshot.Online)</p>
+    }
+  </aside>
+  <section class="chat-feed" aria-label="Лента сообщений">
+    <button class="btn chat-mobile-toggle" @onclick="() => showList = !showList">Список чатов</button>
+    @if (snapshot is not null)
+    {
+      <h2>@snapshot.CurrentRoom.Name</h2>
+      @if (snapshot.Pinned.Count > 0)
+      {
+        <details><summary>★ Выделенные сообщения (@snapshot.Pinned.Count)</summary>
+          @foreach (var pin in snapshot.Pinned) { <button class="btn" @onclick="() => OpenMessage(pin.Id)">@pin.Text</button> }
+        </details>
+      }
+      <button class="btn" @onclick="Older">Более ранние сообщения</button>
+      @foreach (var view in snapshot.Messages)
+      {
+        var m = view.Message;
+        var person = snapshot.People.Find(x => x.Id == m.AuthorId);
+        <article id="@($"message-{m.Id}")" class="chat-message @(m.Highlighted ? "chat-message--highlight" : "")" @key="m.Id">
+          <header><strong style="color:@(person?.Color ?? "#8b4513")">@(person?.Name ?? "Участник")</strong> · <time>@Local(m.CreatedUtc)</time>
+            @if (m.EditedUtc is not null) { <span> · изменено</span> }
+            @if (m.Highlighted) { <span aria-label="Выделено администратором">★</span> }
+          </header>
+          @if (m.Readers.Length > 0) { <p>🔒 Личное: @Names(m.Readers). Доступно также администраторам.</p> }
+          <p class="chat-text">@m.Text</p>
+          @if (m.ConfirmedTimeUtc is { } instant)
+          {
+            <p>@Local(instant) (@preference.Zone) · исходное @TimeZoneInfo.ConvertTimeFromUtc(instant, TimeZoneInfo.FindSystemTimeZoneById(m.SourceZone!)) (@m.SourceZone)</p>
+          }
+          @foreach (var file in view.Attachments)
+          {
+            <p>📎 <a href="@($"/chat-files/{file.Id}")" download>@file.Name</a> (@file.Length байт, до @Local(file.ExpiresUtc))</p>
+          }
+          @if (view.Poll is not null)
+          {
+            <ChatPollView View="view" User="user" UserId="userId" Admin="admin" OnChanged="Refresh" />
+          }
+          @foreach (var request in snapshot.Requests.Where(x => x.CardMessageId == m.Id))
+          {
+            <SchedulingCard Request="request" Ballots="snapshot.Ballots" Games="snapshot.Games" People="snapshot.People" Zone="preference.Zone" User="user" UserId="userId" OnChanged="Refresh" />
+          }
+          @foreach (var game in snapshot.Games.Where(x => x.CancelledUtc == null && x.MasterId == userId))
+          {
+            @if (m.Readers.Contains(userId) && m.Text.Contains(game.Id.ToString())) { <a href="@($"/admin/economy/sessions?scheduledGame={game.Id}")">Настроить партию</a> }
+          }
+          <footer>
+            <button class="btn" @onclick="() => StartThread(m.Id)">Ветка</button>
+            @if (m.AuthorId == userId)
+            {
+              <button class="btn" @onclick="() => BeginEdit(m)">Изменить</button>
+              <label class="btn">📎 Прикрепить<InputFile OnChange="e => Upload(m.Id, e)" /></label>
+            }
+            @if (m.AuthorId == userId || admin) { <button class="btn" @onclick="() => Delete(m.Id)">Удалить</button> }
+            @if (admin) { <button class="btn" @onclick="() => Highlight(m.Id)">@(m.Highlighted ? "Убрать выделение" : "Выделить")</button> }
+            <details><summary>Прочитали: @view.ReadBy.Count</summary>@Names(view.ReadBy)</details>
+          </footer>
+        </article>
+      }
+      <p aria-live="polite">@(snapshot.Typing.Count > 0 ? $"Печатает: {Names(snapshot.Typing)}" : "")</p>
+      @if (editing is not null) { <p>Редактирование <button class="btn" @onclick="CancelEdit">Отменить</button></p> }
+      <label>Сообщение<textarea value="@draft" @oninput="DraftChanged" maxlength="12000" rows="3"></textarea></label>
+      <details><summary>Кому: @(recipients.Count == 0 ? "всем в этом чате" : Names(recipients))</summary>
+        <p>Личные сообщения доступны также администраторам. Ветка сохраняет прежний круг читателей.</p>
+        @foreach (var p in snapshot.People.Where(x => x.Id != userId && (snapshot.CurrentRoom.Readers is not { Length: > 0 } audience || audience.Contains(x.Id))))
+        {
+          <label><input type="checkbox" checked="@recipients.Contains(p.Id)" @onchange="e => Recipient(p.Id, (bool)e.Value!)" /> @p.Name</label>
+        }
+      </details>
+      <label>📎 Вложение к новому сообщению<InputFile OnChange="e => pendingFile = e.File" /></label>
+      @if (pendingFile is not null) { <p>@pendingFile.Name</p> }
+      @if (Recognized() is { } recognized)
+      {
+        <label><input type="checkbox" @bind="confirmTime" /> Подтвердить дату @recognized.ToString("dd.MM.yyyy HH:mm") (@preference.Zone); показать местное время читателям</label>
+      }
+      <button class="btn btn--primary" disabled="@busy" @onclick="Send">@(busy ? "Отправка…" : "Отправить")</button>
+      <a class="btn" href="/calendar">📅 Календарь</a>
+      <details><summary>Создать опрос</summary>
+        <label>Вопрос<input @bind="question" /></label>
+        <label>Варианты, каждый с новой строки<textarea @bind="pollOptions"></textarea></label>
+        <label>Окончание (@preference.Zone)<input type="datetime-local" @bind="pollEnd" /></label>
+        <label><input type="checkbox" @bind="multiple" /> Несколько ответов</label>
+        <button class="btn" @onclick="CreatePoll">Опубликовать опрос</button>
+      </details>
+      @if (admin)
+      {
+        <details><summary>Запросить свободное время</summary>
+          <SchedulingOptions Settings="settings" />
+          <button class="btn" @onclick="Request">Запросить свободное время</button>
+        </details>
+      }
+    }
+  </section>
+</div>
+
+@code {
+  [SupplyParameterFromQuery(Name = "room")] public Guid? RoomQuery { get; set; }
+  [SupplyParameterFromQuery(Name = "message")] public Guid? MessageQuery { get; set; }
+  private ClaimsPrincipal user = new();
+  private Guid userId, room;
+  private bool admin, archive, showList, busy, confirmTime, multiple;
+  private string? error;
+  private string draft = "", newRoom = "", search = "", question = "", pollOptions = "";
+  private DateTime pollEnd = DateTime.Today.AddDays(1).AddHours(20);
+  private ChatPreference preference = new();
+  private ChatSnapshot? snapshot;
+  private List<ChatMessage> hits = [];
+  private HashSet<Guid> recipients = [];
+  private Guid? editing;
+  private IBrowserFile? pendingFile;
+  private int take = 50;
+  private readonly string connection = Guid.NewGuid().ToString("N");
+  private readonly CancellationTokenSource lifetime = new();
+  private Task? loop;
+  private bool interactive;
+  private string? pendingScroll;
+  private Guid? lastMessageQuery, lastRoomQuery;
+  private SchedulingSettings settings = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    await Run(async () =>
+    {
+      user = (await Auth.GetAuthenticationStateAsync()).User;
+      userId = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
+      admin = user.IsInRole(RoleNames.Admin);
+      preference = await Chat.Preference(user);
+      room = RoomQuery ?? await Chat.Main(user);
+      if (MessageQuery is { } id) { var location = await Chat.Locate(user, id); room = location.Room; take = location.Take; }
+      await Refresh();
+    });
+  }
+
+  protected override async Task OnParametersSetAsync()
+  {
+    if (room == Guid.Empty || lastMessageQuery == MessageQuery && lastRoomQuery == RoomQuery) return;
+    lastMessageQuery = MessageQuery; lastRoomQuery = RoomQuery;
+    if (MessageQuery is { } id) await OpenMessage(id);
+    else if (RoomQuery is { } r) await OpenRoom(r);
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (firstRender) { interactive = true; loop = Updates(); }
+    if (pendingScroll is { } id) { pendingScroll = null; await JS.InvokeVoidAsync("chatUi.scroll", id); }
+  }
+
+  private async Task Updates()
+  {
+    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+    try
+    {
+      while (await timer.WaitForNextTickAsync(lifetime.Token))
+        await InvokeAsync(async () => { if (!busy && room != Guid.Empty) { await Run(Refresh); StateHasChanged(); } });
+    }
+    catch (OperationCanceledException) { }
+  }
+
+  private async Task Run(Func<Task> action)
+  {
+    try { error = null; await action(); }
+    catch (JSDisconnectedException) { }
+    catch (UnauthorizedAccessException) { snapshot = null; error = "Нет доступа. Войдите заново или откройте доступный чат."; }
+    catch (Exception e) when (e is ArgumentException or IOException or TimeZoneNotFoundException) { error = e.Message; }
+  }
+
+  private async Task Refresh()
+  {
+    var target = room;
+    var result = await Chat.Snapshot(user, target, take, archive);
+    if (target != room) return;
+    snapshot = result;
+    if (!interactive || !await JS.InvokeAsync<bool>("chatUi.visible")) return;
+    await Chat.Presence(user, target, connection, draft.Length > 0 && recipients.Count == 0);
+    // Прочтения отправляются только для реально загруженной открытой ленты.
+    var unread = result.Messages.Where(x => !x.ReadBy.Contains(userId)).Select(x => x.Message.Id).ToArray();
+    if (unread.Length > 0) await Chat.Read(user, target, unread);
+  }
+  private string Names(IEnumerable<Guid> ids) => string.Join(", ", ids.Select(id => snapshot?.People.Find(x => x.Id == id)?.Name ?? "Участник"));
+  private string Local(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(preference.Zone)).ToString("dd.MM.yyyy HH:mm");
+  private Task OpenRoom(Guid id) => Run(async () => { room = id; take = 50; showList = false; CancelEdit(); recipients.Clear(); pendingFile = null; await Refresh(); });
+  private Task OpenMessage(Guid id) => Run(async () => { var loc = await Chat.Locate(user, id); room = loc.Room; take = loc.Take; showList = false; CancelEdit(); recipients.Clear(); pendingFile = null; await Refresh(); pendingScroll = $"message-{id}"; });
+  private Task ToggleArchive() => Run(async () => { archive = !archive; await Refresh(); });
+  private Task Older() => Run(async () => { take += 50; await Refresh(); });
+  private Task CreateRoom() => Run(async () => { room = await Chat.CreateRoom(user, newRoom); newRoom = ""; await Refresh(); });
+  private Task Find() => Run(async () => hits = await Chat.Search(user, search));
+  private Task StartThread(Guid id) => Run(async () => { room = await Chat.Thread(user, id); take = 50; CancelEdit(); recipients.Clear(); pendingFile = null; await Refresh(); });
+  private void BeginEdit(ChatMessage m) { editing = m.Id; draft = m.Text; confirmTime = false; }
+  private void CancelEdit() { editing = null; draft = ""; confirmTime = false; }
+  private Task DraftChanged(ChangeEventArgs e) { draft = e.Value?.ToString() ?? ""; confirmTime = false; return Run(() => Chat.Presence(user, room, connection, draft.Length > 0 && recipients.Count == 0)); }
+  private void Recipient(Guid id, bool selected) { if (selected) recipients.Add(id); else recipients.Remove(id); }
+  private DateTime? Recognized() => ChatTimeParser.Recognize(draft);
+  private Task Send() => Run(async () =>
+  {
+    busy = true;
+    try
+    {
+      if (editing is { } edit) await Chat.Edit(user, edit, draft);
+      else
+      {
+        var utc = confirmTime && Recognized() is { } local ? CalendarEngine.ToUtc(local, preference.Zone) : (DateTime?)null;
+        var id = await Chat.Send(user, room, string.IsNullOrWhiteSpace(draft) && pendingFile is not null ? "Вложение" : draft, recipients.ToArray(), utc, utc is null ? null : preference.Zone);
+        if (pendingFile is not null) { await using var stream = pendingFile.OpenReadStream(100_000_000, lifetime.Token); await Chat.Upload(user, id, pendingFile.Name, stream, lifetime.Token); }
+      }
+      CancelEdit(); recipients.Clear(); pendingFile = null; await Refresh();
+    }
+    finally { busy = false; }
+  });
+  private Task Upload(Guid id, InputFileChangeEventArgs e) => Run(async () =>
+  {
+    busy = true;
+    try { await using var stream = e.File.OpenReadStream(100_000_000, lifetime.Token); await Chat.Upload(user, id, e.File.Name, stream, lifetime.Token); await Refresh(); }
+    finally { busy = false; }
+  });
+  private Task Delete(Guid id) => Run(async () => { if (await JS.InvokeAsync<bool>("confirm", "Удалить сообщение?")) { await Chat.Delete(user, id); await Refresh(); } });
+  private Task Highlight(Guid id) => Run(async () => { await Chat.Highlight(user, id); await Refresh(); });
+  private Task CreatePoll() => Run(async () => { await Chat.CreatePoll(user, room, question, pollOptions.Split('\n', StringSplitOptions.RemoveEmptyEntries), multiple, CalendarEngine.ToUtc(pollEnd, preference.Zone), recipients.ToArray()); question = pollOptions = ""; recipients.Clear(); await Refresh(); });
+  private Task Request() => Run(async () => { await Scheduling.Request(user, room, preference.Zone, settings); await Refresh(); });
+  public async ValueTask DisposeAsync() { lifetime.Cancel(); if (loop is not null) await loop; lifetime.Dispose(); }
+}

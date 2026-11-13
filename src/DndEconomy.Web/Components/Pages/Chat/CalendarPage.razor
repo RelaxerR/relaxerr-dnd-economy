@@ -1,0 +1,115 @@
+@page "/calendar"
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using DndEconomy.Application.Collaboration
+@using DndEconomy.Domain.Collaboration
+@using DndEconomy.Domain.Constants
+@inject ISchedulingService Scheduling
+@inject IChatService Chat
+@inject AuthenticationStateProvider Auth
+
+<PageTitle>Календарь — Relaxerr</PageTitle>
+<h1>Мой календарь</h1>
+<p><a href="/chat">← В чат</a> · <a href="/chat-settings">Часовой пояс и настройки</a></p>
+@if (error is not null) { <p role="alert">@error</p> }
+@if (preference is not null)
+{
+  <p>Время ввода: @preference.Zone. Не заполнено — отдельное состояние, не считается занятостью или согласием.</p>
+  <section class="auth-card calendar-editor">
+    <label>Начало<input type="datetime-local" @bind="rule.LocalStart" /></label>
+    <label>Окончание / последний день повтора<input type="datetime-local" @bind="rule.LocalEnd" /></label>
+    <label>Статус<select @bind="rule.Status">
+      @foreach (var s in Enum.GetValues<AvailabilityStatus>().Where(x => x != AvailabilityStatus.Empty)) { <option value="@s">@Label(s)</option> }
+    </select></label>
+    <label>Формат<select @bind="rule.Format"><option value="@PlayFormat.Both">Онлайн и офлайн</option><option value="@PlayFormat.Online">Онлайн</option><option value="@PlayFormat.Offline">Офлайн</option></select></label>
+    <label>Повтор<select @bind="rule.Repeat"><option value="@RepeatKind.Once">Разово</option><option value="@RepeatKind.Daily">Ежедневно</option><option value="@RepeatKind.Weekly">По дням недели</option><option value="@RepeatKind.Monthly">По числам месяца</option></select></label>
+    @if (rule.Repeat is RepeatKind.Weekly or RepeatKind.Monthly)
+    { <label>@(rule.Repeat == RepeatKind.Weekly ? "Дни недели: 0=вс, 1=пн…6=сб" : "Числа месяца 1–31")<input @bind="days" placeholder="1,3,5" /></label> }
+    <button class="btn btn--primary" @onclick="Save">Сохранить окно</button>
+    <button class="btn" @onclick="New">Новое окно</button>
+    <label>Целый день<input type="date" @bind="wholeDay" /></label>
+    <button class="btn" @onclick="() => AllDay(AvailabilityStatus.Certain)">Весь день свободен</button>
+    <button class="btn" @onclick="() => AllDay(AvailabilityStatus.Unavailable)">Весь день занят</button>
+  </section>
+  <section>
+    <h2>Покрытие периода</h2>
+    <label>С<input type="date" @bind="from" /></label><label>До (не включая)<input type="date" @bind="until" /></label>
+    <button class="btn" @onclick="Coverage">Показать покрытие</button>
+    @foreach (var line in coverage) { <p>@line</p> }
+  </section>
+  <h2>Мои окна</h2>
+  @foreach (var r in rules)
+  {
+    <article class="chat-message session-window--@((int)r.Status)">
+      <p>@r.LocalStart.ToString("dd.MM.yyyy HH:mm") — @r.LocalEnd.ToString("dd.MM.yyyy HH:mm") (@r.Zone) · @Label(r.Status) · @Format(r.Format) · @Repeat(r.Repeat)</p>
+      @if (r.StartUtc is { } start && r.EndUtc is { } end) { <p>В моём поясе: @Local(start) — @Local(end)</p> }
+      <button class="btn" @onclick="() => Edit(r)">Изменить</button><button class="btn" @onclick="() => Delete(r.Id)">Удалить</button>
+    </article>
+  }
+  @if (admin)
+  {
+    <h2>Предварительный подбор с завтра</h2>
+    <SchedulingOptions Settings="settings" />
+    <button class="btn" @onclick="Preview">Рассчитать</button>
+    @if (preview.Count == 0) { <p>Допустимых или условных окон пока нет.</p> }
+    @foreach (var w in preview.Take(100))
+    {
+      <article class="chat-message session-window--@w.Color"><p>@Local(w.StartUtc) — @Local(w.EndUtc) · @w.Format · @w.Reason</p>
+        <p>Состав: @string.Join(", ", w.Players.Select(p => $"{people.Find(x => x.Id == p.UserId)?.Name}: {Local(p.AtUtc)}"))</p>
+      </article>
+    }
+  }
+}
+
+@code {
+  [SupplyParameterFromQuery(Name = "from")] public DateTime? FromQuery { get; set; }
+  [SupplyParameterFromQuery(Name = "until")] public DateTime? UntilQuery { get; set; }
+  private ClaimsPrincipal user = new();
+  private ChatPreference? preference;
+  private List<AvailabilityRule> rules = [];
+  private AvailabilityRule rule = new();
+  private DateTime wholeDay = DateTime.Today.AddDays(1), from = DateTime.Today.AddDays(1), until = DateTime.Today.AddDays(8);
+  private string days = "", error = "";
+  private List<string> coverage = [];
+  private bool admin;
+  private SchedulingSettings settings = new();
+  private List<SessionWindow> preview = [];
+  private List<ChatPerson> people = [];
+  protected override async Task OnInitializedAsync() => await Run(async () =>
+  {
+    user = (await Auth.GetAuthenticationStateAsync()).User; admin = user.IsInRole(RoleNames.Admin);
+    preference = await Chat.Preference(user); from = FromQuery ?? from; until = UntilQuery ?? until;
+    rules = await Scheduling.Calendar(user); New(); await Coverage();
+  });
+  private async Task Run(Func<Task> action)
+  {
+    try { error = ""; await action(); }
+    catch (Exception e) when (e is ArgumentException or UnauthorizedAccessException or FormatException or TimeZoneNotFoundException) { error = e is UnauthorizedAccessException ? "Нет доступа." : e.Message; }
+  }
+  private void New() { rule = new() { Zone = preference?.Zone ?? "Europe/Samara", LocalStart = from.Date.AddHours(19), LocalEnd = from.Date.AddHours(23) }; days = ""; }
+  private void Edit(AvailabilityRule r) { rule = new() { Id = r.Id, Zone = r.Zone, LocalStart = r.LocalStart, LocalEnd = r.LocalEnd, Status = r.Status, Format = r.Format, Repeat = r.Repeat, Days = r.Days }; days = string.Join(',', r.Days); }
+  private Task Save() => Run(async () => { rule.Days = days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToArray(); await Scheduling.SaveRule(user, rule); rules = await Scheduling.Calendar(user); New(); await Coverage(); });
+  private Task Delete(Guid id) => Run(async () => { await Scheduling.DeleteRule(user, id); rules = await Scheduling.Calendar(user); await Coverage(); });
+  private Task AllDay(AvailabilityStatus status) => Run(async () => { await Scheduling.SaveRule(user, new() { LocalStart = wholeDay.Date, LocalEnd = wholeDay.Date.AddDays(1), Zone = preference!.Zone, Status = status, Format = rule.Format }); rules = await Scheduling.Calendar(user); await Coverage(); });
+  private Task Coverage() => Run(() =>
+  {
+    if (until <= from || until > from.AddDays(60)) throw new ArgumentException("Период покрытия: 1–60 дней.");
+    coverage.Clear();
+    var id = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var slices = CalendarEngine.Expand(rules, CalendarEngine.ToUtc(from.Date, preference!.Zone), CalendarEngine.ToUtc(until.Date, preference.Zone));
+    for (var date = from.Date; date < until.Date; date = date.AddDays(1))
+    foreach (var format in new[] { PlayFormat.Online, PlayFormat.Offline })
+    {
+      var start = CalendarEngine.ToUtc(date, preference.Zone); var end = CalendarEngine.ToUtc(date.AddDays(1), preference.Zone);
+      var minutes = slices.Where(x => x.UserId == id && x.Format == format && x.StartUtc < end && x.EndUtc > start)
+        .Sum(x => ((x.EndUtc < end ? x.EndUtc : end) - (x.StartUtc > start ? x.StartUtc : start)).TotalMinutes);
+      coverage.Add($"{date:dd.MM}: {Format(format)} — {(minutes == (end - start).TotalMinutes ? "день полностью заполнен" : $"не заполнено {(end - start).TotalMinutes - minutes:0} минут")}");
+    }
+    return Task.CompletedTask;
+  });
+  private Task Preview() => Run(async () => { preview = await Scheduling.Preview(user, preference!.Zone, settings); people = (await Chat.Snapshot(user, await Chat.Main(user), 1, false)).People; });
+  private string Local(DateTime date) => TimeZoneInfo.ConvertTimeFromUtc(date, TimeZoneInfo.FindSystemTimeZoneById(preference!.Zone)).ToString("dd.MM.yyyy HH:mm");
+  private static string Format(PlayFormat f) => f switch { PlayFormat.Online => "Онлайн", PlayFormat.Offline => "Офлайн", _ => "Онлайн и офлайн" };
+  private static string Repeat(RepeatKind r) => r switch { RepeatKind.Once => "Разово", RepeatKind.Daily => "Ежедневно", RepeatKind.Weekly => "По дням недели", _ => "По числам месяца" };
+  private static string Label(AvailabilityStatus s) => s switch { AvailabilityStatus.Certain => "Точно могу", AvailabilityStatus.PreferOther => "Могу, но предпочёл бы другое время", AvailabilityStatus.Unlikely => "Скорее всего не смогу", AvailabilityStatus.Unavailable => "Точно не смогу", _ => "Не заполнено" };
+}

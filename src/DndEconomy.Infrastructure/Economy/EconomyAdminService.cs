@@ -56,7 +56,8 @@ public sealed class EconomyAdminService : IEconomyAdminService
         Season = x.Season,
         BaseCoefficient = x.BaseCoefficient,
         SellCoefficient = x.SellCoefficient,
-        IsPinnedForDisplay = x.IsPinnedForDisplay
+        IsPinnedForDisplay = x.IsPinnedForDisplay,
+        IsCancelled = x.IsCancelled
       })
       .ToListAsync(cancellationToken);
   }
@@ -66,7 +67,15 @@ public sealed class EconomyAdminService : IEconomyAdminService
   {
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-    dbContext.EconomySessions.Add(new EconomySession
+    dbContext.EconomySessions.Add(NewSession(input));
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+  }
+
+  /// <summary>Общая сборка экономической сессии для ручного создания и связанной игры.</summary>
+  internal static EconomySession NewSession(NewEconomySessionInput input)
+  {
+    return new EconomySession
     {
       Name = input.Name,
       Description = input.Description,
@@ -76,9 +85,7 @@ public sealed class EconomyAdminService : IEconomyAdminService
       Season = input.Season,
       BaseCoefficient = input.BaseCoefficient,
       SellCoefficient = input.SellCoefficient
-    });
-
-    await dbContext.SaveChangesAsync(cancellationToken);
+    };
   }
 
   /// <inheritdoc />
@@ -111,6 +118,8 @@ public sealed class EconomyAdminService : IEconomyAdminService
     if (session is null)
       return;
 
+    if (await dbContext.Set<DndEconomy.Domain.Collaboration.ScheduledGame>().AnyAsync(x => x.EconomySessionId == sessionId, cancellationToken))
+      throw new ArgumentException("Связанная с расписанием сессия сохраняется в истории и не удаляется.");
     dbContext.EconomySessions.Remove(session);
     await dbContext.SaveChangesAsync(cancellationToken);
   }
@@ -120,6 +129,8 @@ public sealed class EconomyAdminService : IEconomyAdminService
   {
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+    await Collaboration.ChatAccess.Lock(dbContext);
     // Снимаем закрепление со всех сессий разом (частичный уникальный индекс допускает
     // только одну закреплённую запись), затем закрепляем выбранную, если она указана.
     await dbContext.EconomySessions
@@ -127,11 +138,15 @@ public sealed class EconomyAdminService : IEconomyAdminService
       .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsPinnedForDisplay, false), cancellationToken);
 
     if (sessionId is null)
+    {
+      await transaction.CommitAsync(cancellationToken);
       return;
+    }
 
     await dbContext.EconomySessions
-      .Where(x => x.Id == sessionId.Value)
+      .Where(x => x.Id == sessionId.Value && !x.IsCancelled)
       .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsPinnedForDisplay, true), cancellationToken);
+    await transaction.CommitAsync(cancellationToken);
   }
 
   #region Коэффициенты города/сезона

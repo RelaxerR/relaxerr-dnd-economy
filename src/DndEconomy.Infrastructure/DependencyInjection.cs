@@ -163,6 +163,11 @@ public static class DependencyInjection
     services.AddScoped<IEconomyAdminService, EconomyAdminService>();
     services.AddScoped<IEconomyActivityAdminService, EconomyActivityAdminService>();
     services.AddScoped<IPartySizeCoefficientAdminService, PartySizeCoefficientAdminService>();
+    services.AddScoped<DndEconomy.Application.Collaboration.IChatService, DndEconomy.Infrastructure.Collaboration.ChatService>();
+    services.AddScoped<DndEconomy.Application.Collaboration.ISchedulingService, DndEconomy.Infrastructure.Collaboration.SchedulingService>();
+    services.AddHostedService<DndEconomy.Infrastructure.Collaboration.CollaborationWorker>();
+    services.AddScoped<DndEconomy.Application.Collaboration.IPushService, DndEconomy.Infrastructure.Collaboration.PushService>();
+    services.AddHostedService<DndEconomy.Infrastructure.Collaboration.ChatPushWorker>();
     services.AddSingleton(TimeProvider.System);
   }
 

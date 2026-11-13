@@ -57,6 +57,9 @@ public class EconomySession : AuditableEntity
   /// </summary>
   public bool IsPinnedForDisplay { get; set; }
 
+  /// <summary>Отменённая связанная игра остаётся в истории, но не участвует в ценообразовании.</summary>
+  public bool IsCancelled { get; set; }
+
   #endregion
 
   #region Глобальные коэффициенты

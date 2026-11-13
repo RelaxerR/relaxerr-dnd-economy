@@ -27,6 +27,10 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) => loggerConfig
 
 #region Регистрация сервисов
 
+var chatStorage = Path.GetFullPath(builder.Configuration["Chat:StoragePath"] ?? "private-chat-files");
+var publicRoot = Path.GetFullPath(builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot"));
+if (chatStorage == publicRoot || chatStorage.StartsWith(publicRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+  throw new InvalidOperationException("Chat:StoragePath должен находиться вне wwwroot.");
 builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services.AddRazorComponents()
@@ -93,6 +97,12 @@ forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.P
 forwardedHeadersOptions.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Loopback, 8));
 app.UseForwardedHeaders(forwardedHeadersOptions);
 
+app.Use(async (context, next) =>
+{
+  if (new[] { "/chat", "/calendar", "/chat-settings", "/chat-files", "/notifications" }.Any(path => context.Request.Path.StartsWithSegments(path)))
+    context.Response.Headers.CacheControl = "private, no-store";
+  await next();
+});
 app.UseHttpsRedirection();
 app.UseSerilogRequestLogging();
 app.UseRateLimiter();

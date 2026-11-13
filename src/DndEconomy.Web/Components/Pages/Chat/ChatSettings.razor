@@ -1,0 +1,83 @@
+@page "/chat-settings"
+@rendermode InteractiveServer
+@implements IDisposable
+@using System.Security.Claims
+@using DndEconomy.Application.Collaboration
+@using DndEconomy.Domain.Collaboration
+@inject IChatService Chat
+@inject IPushService Push
+@inject AuthenticationStateProvider Auth
+@inject IJSRuntime JS
+
+<PageTitle>Настройки чата — Relaxerr</PageTitle>
+<h1>Настройки чата</h1>
+<p><a href="/chat">← В чат</a></p>
+@if (error is not null) { <p role="status">@error</p> }
+@if (preference is not null)
+{
+  <section class="auth-card">
+    <label>Цвет имени<input type="color" @bind="preference.Color" /></label>
+    <label>Часовой пояс<select @bind="preference.Zone">
+      @foreach (var zone in TimeZoneInfo.GetSystemTimeZones()) { <option value="@zone.Id">@zone.Id</option> }
+    </select></label>
+    <h2>Уведомления на сайте и push</h2>
+    @foreach (var kind in kinds)
+    {
+      <label style="display:block"><input type="checkbox" checked="@preference.Events.Contains(kind.Key)" @onchange="e => Toggle(kind.Key, (bool)e.Value!)" /> @kind.Value</label>
+    }
+    <button class="btn btn--primary" @onclick="Save">Сохранить настройки</button>
+    <p>Для push нужны HTTPS и разрешение браузера. На iPhone: «Поделиться» → «На экран Домой», затем откройте сайт с домашнего экрана и подключите уведомления. На Android откройте сайт в браузере и разрешите уведомления.</p>
+    @if (string.IsNullOrEmpty(Push.PublicKey)) { <p>Web Push ещё не настроен администратором.</p> }
+    else { <button class="btn" id="chat-push-enable">Подключить push на этом устройстве</button> }
+    <button class="btn" @onclick="Disable">Отключить push на этом устройстве</button>
+    <p>На экране блокировки показывается только тип события, без текста сообщений. Перед сменой аккаунта отключите push этого устройства.</p>
+  </section>
+  <h2>Уведомления чата</h2>
+  @foreach (var notice in notices)
+  {
+    <article class="chat-message"><a href="@(notice.MessageId is { } id ? $"/chat?message={id}" : $"/chat?room={notice.RoomId}")">@notice.Title</a>
+      @if (!notice.Read) { <button class="btn" @onclick="() => Mark(notice.Id)">Прочитано</button> }
+    </article>
+  }
+}
+
+@code {
+  private ClaimsPrincipal user = new();
+  private ChatPreference? preference;
+  private List<ChatNotice> notices = [];
+  private string? error;
+  private static readonly Dictionary<string, string> kinds = new() { ["message"] = "Новые сообщения", ["private"] = "Личные сообщения", ["thread"] = "Ответы в ветках", ["mention"] = "Упоминания", ["poll"] = "Опросы", ["request"] = "Запрос календаря", ["assigned"] = "Назначение игры", ["cancelled"] = "Отмена игры", ["reminder"] = "Напоминания за 24 часа и за час" };
+  protected override async Task OnInitializedAsync() => await Run(async () => { user = (await Auth.GetAuthenticationStateAsync()).User; preference = await Chat.Preference(user); notices = await Chat.Notices(user); });
+  private void Toggle(string kind, bool value) { preference!.Events = value ? preference.Events.Append(kind).Distinct().ToArray() : preference.Events.Where(x => x != kind).ToArray(); }
+  private async Task Run(Func<Task> action)
+  {
+    try { error = null; await action(); }
+    catch (Exception e) when (e is ArgumentException or UnauthorizedAccessException or JSException or TimeZoneNotFoundException) { error = e is UnauthorizedAccessException ? "Нет доступа." : e.Message; }
+  }
+  private Task Save() => Run(async () => { await Chat.SavePreference(user, preference!); error = "Настройки сохранены."; });
+  private DotNetObjectReference<ChatSettings>? reference;
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (firstRender && !string.IsNullOrEmpty(Push.PublicKey))
+    {
+      reference = DotNetObjectReference.Create(this);
+      await JS.InvokeVoidAsync("chatPush.bind", reference, Push.PublicKey);
+    }
+  }
+  /// <summary>Сохраняет подписку, полученную непосредственно из браузерного жеста пользователя.</summary>
+  [JSInvokable]
+  public async Task RegisterBrowserPush(BrowserSubscription s)
+  {
+    await Run(async () => { await Push.Subscribe(user, s.Endpoint, s.P256dh, s.Auth); error = "Push подключён на этом устройстве."; });
+    await InvokeAsync(StateHasChanged);
+  }
+  /// <summary>Показывает отказ браузера без потери circuit.</summary>
+  [JSInvokable]
+  public async Task BrowserPushError(string message) { error = message; await InvokeAsync(StateHasChanged); }
+  /// <inheritdoc />
+  public void Dispose() => reference?.Dispose();
+  private Task Disable() => Run(async () => { var endpoint = await JS.InvokeAsync<string>("chatPush.current"); if (endpoint != "") await Push.Unsubscribe(user, endpoint); await JS.InvokeVoidAsync("chatPush.disable"); error = "Push отключён."; });
+  private Task Mark(Guid id) => Run(async () => { await Chat.MarkNotice(user, id); notices = await Chat.Notices(user); });
+  /// <summary>Подписка, созданная текущим браузером.</summary>
+  public sealed class BrowserSubscription { public string Endpoint { get; set; } = ""; public string P256dh { get; set; } = ""; public string Auth { get; set; } = ""; }
+}

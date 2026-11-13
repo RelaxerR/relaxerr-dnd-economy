@@ -767,3 +767,42 @@ body {
 @keyframes music-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .music-spinner { animation: none; } }
 @media (max-width: 700px) { .music-trees { grid-template-columns: 1fr; } }
+
+/* Chat and scheduling */
+.chat-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 1.5rem; }
+.chat-sidebar { display: flex; flex-direction: column; gap: .6rem; }
+.chat-feed { min-width: 0; }
+.chat-feed textarea, .chat-feed input:not([type=checkbox]), .calendar-editor input, .calendar-editor select { max-width: 100%; }
+.chat-feed label, .calendar-editor label, .scheduling-options label { display: block; margin: .7rem 0; }
+.chat-feed textarea { display: block; width: 100%; }
+.chat-message { margin: 1rem 0; padding: 1rem; border: 1px solid #b9a88d; border-radius: .6rem; overflow-wrap: anywhere; }
+.chat-message--highlight { border: 3px solid #97671b; }
+.chat-message footer { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.chat-text { white-space: pre-wrap; }
+.chat-search-result { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.session-window { padding: .7rem; margin: .7rem 0; border-left: 5px solid; }
+.session-window--0 { border-left-color: #24803e; }
+.session-window--1 { border-left-color: #a87a00; }
+.session-window--2 { border-left-color: #cf5420; }
+.session-window--3 { border-left-color: #b62828; }
+.chat-mobile-toggle { display: none; }
+@media (max-width: 700px) {
+  .chat-shell { grid-template-columns: minmax(0, 1fr); }
+  .chat-sidebar { display: none; }
+  .chat-sidebar--open { display: flex; }
+  .chat-mobile-toggle { display: inline-block; }
+  .chat-message { padding: .7rem; }
+  .chat-message .btn { min-height: 40px; }
+}
+.chat-sidebar label { display: flex; flex-direction: column; gap: .3rem; }
+.chat-shell input:not([type=checkbox]), .chat-shell textarea, .calendar-editor input, .calendar-editor select, .scheduling-options input, .scheduling-options select {
+  font: inherit; padding: .5rem; border: 1px solid #b9a88d; border-radius: .4rem;
+}
+.chat-shell details { margin: .7rem 0; }
+@media (max-width: 700px) {
+  .app-header { padding: 16px; }
+  .app-header__nav { flex-wrap: wrap; gap: 10px; }
+  .app-header__user { overflow-wrap: anywhere; }
+  .app-content { padding: 24px 16px; }
+  .chat-shell input[type=file] { width: 100%; }
+}

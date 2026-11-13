@@ -1,0 +1,55 @@
+@using System.Security.Claims
+@using DndEconomy.Application.Collaboration
+@inject IChatService Chat
+@inject IJSRuntime JS
+
+<div class="chat-poll">
+  <p>Опрос · @(View.Poll!.Multiple ? "несколько ответов" : "один ответ") · до @View.Poll.EndsUtc.ToString("u")</p>
+  @if (error is not null) { <p role="alert">@error</p> }
+  @foreach (var option in View.Options)
+  {
+    <div @key="option.Id">
+      <label><input type="checkbox" disabled="@(View.Poll.EndsUtc <= DateTime.UtcNow)" checked="@selected.Contains(option.Id)" @onchange="e => Select(option.Id, (bool)e.Value!)" />
+        @option.Text — @View.Votes.Count(x => x.OptionId == option.Id)</label>
+      @if (Admin || option.AuthorId == UserId)
+      { <button class="btn" disabled="@(View.Poll.EndsUtc <= DateTime.UtcNow)" @onclick="() => Remove(option.Id)">Удалить вариант</button> }
+    </div>
+  }
+  <button class="btn" disabled="@(View.Poll.EndsUtc <= DateTime.UtcNow)" @onclick="Vote">Сохранить голос</button>
+  @if (View.Poll.EndsUtc > DateTime.UtcNow)
+  {
+    <label>Новый вариант<input @bind="newOption" maxlength="500" /></label>
+    <button class="btn" @onclick="Add">Добавить вариант</button>
+  }
+</div>
+
+@code {
+  [Parameter, EditorRequired] public MessageView View { get; set; } = default!;
+  [Parameter, EditorRequired] public ClaimsPrincipal User { get; set; } = default!;
+  [Parameter] public Guid UserId { get; set; }
+  [Parameter] public bool Admin { get; set; }
+  [Parameter] public EventCallback OnChanged { get; set; }
+  private HashSet<Guid> selected = [];
+  private string newOption = "";
+  private string? error;
+  private Guid? initialized;
+  protected override void OnParametersSet()
+  {
+    if (initialized == View.Poll!.Id) return;
+    initialized = View.Poll.Id;
+    selected = View.Votes.Where(x => x.UserId == UserId).Select(x => x.OptionId).ToHashSet();
+  }
+  private void Select(Guid id, bool value) { if (value) { if (!View.Poll!.Multiple) selected.Clear(); selected.Add(id); } else selected.Remove(id); }
+  private async Task Run(Func<Task> action)
+  {
+    try { error = null; await action(); await OnChanged.InvokeAsync(); }
+    catch (Exception e) when (e is UnauthorizedAccessException or ArgumentException) { error = e is UnauthorizedAccessException ? "Нет доступа." : e.Message; }
+  }
+  private Task Vote() => Run(() => Chat.Vote(User, View.Poll!.Id, selected.ToArray()));
+  private Task Add() => Run(async () => { await Chat.AddOption(User, View.Poll!.Id, newOption); newOption = ""; });
+  private Task Remove(Guid id) => Run(async () =>
+  {
+    var count = await Chat.OptionVotes(User, id);
+    if (await JS.InvokeAsync<bool>("confirm", $"Удалить вариант? Будет снято голосов: {count}.")) await Chat.RemoveOption(User, id, count);
+  });
+}

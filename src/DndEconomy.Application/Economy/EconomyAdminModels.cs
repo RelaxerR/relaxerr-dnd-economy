@@ -45,6 +45,7 @@ public sealed record EconomySessionSummary
   public required decimal BaseCoefficient { get; init; }
   public required decimal SellCoefficient { get; init; }
   public required bool IsPinnedForDisplay { get; init; }
+  public bool IsCancelled { get; init; }
 }
 
 public sealed record NewEconomySessionInput

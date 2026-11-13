@@ -1,0 +1,37 @@
+name: Build and test
+on:
+  push:
+    branches: [codex/chat-and-session-scheduling]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DND_TEST_POSTGRES: Host=localhost;Database=postgres;Username=postgres;Password=postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore
+      - run: dotnet build --no-restore --configuration Release
+      - run: dotnet test --no-build --configuration Release --logger 'trx;LogFileName=tests.trx'
+      - run: dotnet tool install --global dotnet-ef --version 10.0.10
+      - run: dotnet ef migrations has-pending-model-changes --project src/DndEconomy.Infrastructure --startup-project src/DndEconomy.Web --configuration Release --no-build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: tests/**/TestResults/*.trx

@@ -22,3 +22,7 @@ publish/
 
 ## Служебные файлы инструментов/IDE-агентов
 .claude/
+
+private-chat-files/
+
+TestResults/

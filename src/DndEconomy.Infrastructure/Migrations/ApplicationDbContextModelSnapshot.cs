@@ -23,6 +23,503 @@ namespace DndEconomy.Infrastructure.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.AvailabilityRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<int[]>("Days")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<DateTime?>("EndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Format")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LocalEnd")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("LocalStart")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("Repeat")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Zone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AvailabilityRule");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Length")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresUtc");
+
+                    b.HasIndex("MessageId");
+
+                    b.ToTable("ChatAttachment");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ConfirmedTimeUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EditedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Highlighted")
+                        .HasColumnType("boolean");
+
+                    b.PrimitiveCollection<Guid[]>("Readers")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceZone")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(12000)
+                        .HasColumnType("character varying(12000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("RoomId", "CreatedUtc", "Id");
+
+                    b.ToTable("ChatMessage");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatNotice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Read")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "EventKey")
+                        .IsUnique();
+
+                    b.ToTable("ChatNotice");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatPoll", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("EndsUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Multiple")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId")
+                        .IsUnique();
+
+                    b.ToTable("ChatPoll");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatPreference", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<string[]>("Events")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Zone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("ChatPreference");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatPresence", b =>
+                {
+                    b.Property<string>("ConnectionId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SeenUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("TypingUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ConnectionId");
+
+                    b.HasIndex("SeenUtc");
+
+                    b.ToTable("ChatPresence");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatPushDelivery", b =>
+                {
+                    b.Property<Guid>("NoticeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("NextAttemptUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SentUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("NoticeId", "SubscriptionId");
+
+                    b.ToTable("ChatPushDelivery");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatPushSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SecurityStamp")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.ToTable("ChatPushSubscription");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatRead", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ReadUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("MessageId", "UserId");
+
+                    b.ToTable("ChatRead");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatRoom", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ActivityUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsMain")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsThread")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("ParentMessageId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<Guid[]>("Readers")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActivityUtc");
+
+                    b.HasIndex("IsMain")
+                        .IsUnique()
+                        .HasFilter("\"IsMain\"");
+
+                    b.HasIndex("ParentMessageId")
+                        .IsUnique();
+
+                    b.ToTable("ChatRoom");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.PollOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PollId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PollId");
+
+                    b.ToTable("PollOption");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.PollVote", b =>
+                {
+                    b.Property<Guid>("OptionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("OptionId", "UserId");
+
+                    b.ToTable("PollVote");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ScheduledGame", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CancelledUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("EconomySessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("EndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Format")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("MasterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EconomySessionId")
+                        .IsUnique();
+
+                    b.HasIndex("RequestId", "Round")
+                        .IsUnique();
+
+                    b.ToTable("ScheduledGame");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.SchedulingBallot", b =>
+                {
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<string[]>("Keys")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.HasKey("RequestId", "Round", "UserId");
+
+                    b.ToTable("SchedulingBallot");
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.SchedulingRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CardMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("EndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MasterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OptionsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<Guid[]>("Voters")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<string>("Zone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoomId");
+
+                    b.ToTable("SchedulingRequest");
+                });
+
             modelBuilder.Entity("DndEconomy.Domain.Entities.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -292,6 +789,9 @@ namespace DndEconomy.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<bool>("IsCancelled")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsPinnedForDisplay")
                         .HasColumnType("boolean");
 
@@ -323,7 +823,10 @@ namespace DndEconomy.Infrastructure.Migrations
 
                     b.HasIndex("RealDate");
 
-                    b.ToTable("EconomySessions");
+                    b.ToTable("EconomySessions", t =>
+                        {
+                            t.HasCheckConstraint("CK_EconomySession_CancelledNotPinned", "NOT (\"IsCancelled\" AND \"IsPinnedForDisplay\")");
+                        });
                 });
 
             modelBuilder.Entity("DndEconomy.Domain.Entities.Item", b =>
@@ -727,6 +1230,116 @@ namespace DndEconomy.Infrastructure.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.AvailabilityRule", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatAttachment", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Collaboration.ChatMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatMessage", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DndEconomy.Domain.Collaboration.ChatRoom", null)
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatPoll", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Collaboration.ChatMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatPreference", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ChatRead", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Collaboration.ChatMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.PollOption", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Collaboration.ChatPoll", null)
+                        .WithMany()
+                        .HasForeignKey("PollId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.PollVote", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Collaboration.PollOption", null)
+                        .WithMany()
+                        .HasForeignKey("OptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.ScheduledGame", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Entities.EconomySession", null)
+                        .WithMany()
+                        .HasForeignKey("EconomySessionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DndEconomy.Domain.Collaboration.SchedulingRequest", null)
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.SchedulingBallot", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Collaboration.SchedulingRequest", null)
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DndEconomy.Domain.Collaboration.SchedulingRequest", b =>
+                {
+                    b.HasOne("DndEconomy.Domain.Collaboration.ChatRoom", null)
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("DndEconomy.Domain.Entities.CityCoinAcceptance", b =>

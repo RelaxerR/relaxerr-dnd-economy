@@ -17,6 +17,7 @@
     <!-- Прямая ссылка на Open XML SDK (иначе транзитивный через ClosedXML) — используется в
          ExcelEconomyImportService.StripLegacyComments для обхода бага ClosedXML #1772. -->
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
+    <PackageReference Include="WebPush" Version="1.0.13" />
   </ItemGroup>
 
   <ItemGroup>
