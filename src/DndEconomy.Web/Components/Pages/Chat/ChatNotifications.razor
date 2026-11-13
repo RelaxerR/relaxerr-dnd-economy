@@ -1,0 +1,33 @@
+@using System.Security.Claims
+@using DndEconomy.Application.Collaboration
+@using DndEconomy.Domain.Collaboration
+@inject IChatService Chat
+@inject AuthenticationStateProvider Auth
+
+<h2>Чат и расписание</h2>
+<p><a href="/chat-settings">Настройки уведомлений и Web Push</a></p>
+@if (error is not null) { <p role="alert">@error</p> }
+@foreach (var notice in notices)
+{
+  <section class="chat-message">
+    <a href="@(notice.MessageId is { } id ? $"/chat?message={id}" : $"/chat?room={notice.RoomId}")">@notice.Title</a>
+    @if (!notice.Read) { <button class="btn" @onclick="() => Mark(notice.Id)">Прочитано</button> }
+  </section>
+}
+
+@code {
+  private ClaimsPrincipal user = new();
+  private List<ChatNotice> notices = [];
+  private string? error;
+  protected override async Task OnInitializedAsync()
+  {
+    user = (await Auth.GetAuthenticationStateAsync()).User;
+    try { notices = await Chat.Notices(user); }
+    catch (UnauthorizedAccessException) { error = "Войдите заново, чтобы открыть уведомления чата."; }
+  }
+  private async Task Mark(Guid id)
+  {
+    try { await Chat.MarkNotice(user, id); notices = await Chat.Notices(user); }
+    catch (UnauthorizedAccessException) { error = "Уведомление больше недоступно."; notices = []; }
+  }
+}

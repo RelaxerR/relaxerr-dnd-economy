@@ -5,6 +5,7 @@
 @using DndEconomy.Domain.Constants
 @inject NavigationManager NavigationManager
 @inject INotificationService NotificationService
+@inject DndEconomy.Application.Collaboration.IChatService ChatService
 
 <div class="app-shell">
   <header class="app-header">
@@ -18,6 +19,7 @@
           {
             <a href="/admin/activities">Активность</a>
           }
+          <a href="/chat">Чат</a>
           <a href="/profile">Профиль</a>
           <a href="/notifications">Уведомления@(unreadCount > 0 ? $" ({unreadCount})" : "")</a>
           @if (context.User.IsInRole(RoleNames.Admin))
@@ -75,7 +77,11 @@
     var authState = await AuthenticationStateTask;
     var userIdString = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
     if (userIdString is not null && Guid.TryParse(userIdString, out var userId))
+    {
       unreadCount = await NotificationService.GetUnreadCountAsync(userId, CancellationToken.None);
+      try { unreadCount += (await ChatService.Notices(authState.User)).Count(x => !x.Read); }
+      catch (UnauthorizedAccessException) { }
+    }
   }
 
   public void Dispose()

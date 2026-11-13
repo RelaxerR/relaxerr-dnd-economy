@@ -55,13 +55,13 @@ public sealed class EconomyPricingReadStore : IEconomyPricingReadStore
 
     var naturalSession = await dbContext.EconomySessions
       .Include(x => x.City)
-      .Where(x => x.RealDate <= asOfDate)
+      .Where(x => !x.IsCancelled && x.RealDate <= asOfDate)
       .OrderByDescending(x => x.RealDate)
       .FirstOrDefaultAsync(cancellationToken);
 
     var pinnedSession = await dbContext.EconomySessions
       .Include(x => x.City)
-      .SingleOrDefaultAsync(x => x.IsPinnedForDisplay, cancellationToken);
+      .SingleOrDefaultAsync(x => !x.IsCancelled && x.IsPinnedForDisplay, cancellationToken);
 
     // Закреплённая администратором сессия побеждает, пока не наступит дата более новой
     // сессии — тогда автоматический выбор по дате снова берёт верх (см. комментарий на

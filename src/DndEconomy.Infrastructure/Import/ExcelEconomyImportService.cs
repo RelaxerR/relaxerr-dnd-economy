@@ -659,7 +659,11 @@ public sealed partial class ExcelEconomyImportService : IExcelEconomyImportServi
 
     if (replaceExisting)
     {
-      var toRemove = existingSessions.Values.Where(x => !touchedNames.Contains(x.Name)).ToList();
+      var linked = (await dbContext.Set<DndEconomy.Domain.Collaboration.ScheduledGame>()
+        .Where(x => x.EconomySessionId != null).Select(x => x.EconomySessionId!.Value).ToListAsync(cancellationToken)).ToHashSet();
+      var missing = existingSessions.Values.Where(x => !touchedNames.Contains(x.Name)).ToList();
+      var toRemove = missing.Where(x => !linked.Contains(x.Id)).ToList();
+      if (missing.Count != toRemove.Count) summary.Warnings.Add("Сессии, связанные с расписанием, сохранены в истории и не удалены.");
       summary.SessionsRemoved = toRemove.Count;
       if (persist)
       {

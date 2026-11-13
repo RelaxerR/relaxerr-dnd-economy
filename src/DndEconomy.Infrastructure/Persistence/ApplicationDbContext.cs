@@ -38,6 +38,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
     base.OnModelCreating(modelBuilder);
+    DndEconomy.Infrastructure.Collaboration.CollaborationSchema.Configure(modelBuilder);
 
     // Нужно для опечатко-устойчивого поиска по каталогу (GIN-индексы gin_trgm_ops в ItemConfiguration).
     modelBuilder.HasPostgresExtension("pg_trgm");

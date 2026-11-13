@@ -1,0 +1,74 @@
+@using System.Security.Claims
+@using System.Text.Json
+@using DndEconomy.Application.Collaboration
+@using DndEconomy.Domain.Collaboration
+@inject ISchedulingService Scheduling
+
+<div class="scheduling-card">
+  <p>Период: @Local(Request.StartUtc) — @Local(Request.EndUtc) (@Zone). Состояние: @StateLabel</p>
+  <a href="@($"/calendar?from={CalendarStart:yyyy-MM-dd}&until={CalendarUntil:yyyy-MM-dd}")">Открыть календарь запроса</a>
+  @if (error is not null) { <p role="alert">@error</p> }
+  @foreach (var game in Games.Where(x => x.RequestId == Request.Id))
+  {
+    <p>@(game.CancelledUtc is null ? "Игра" : "Отменённая игра"): @Local(game.StartUtc) — @Local(game.EndUtc) · @Format(game.Format)</p>
+  }
+  @if (Request.State == "voting")
+  {
+    <p>Ответили: @Ballots.Count(x => x.RequestId == Request.Id && x.Round == Request.Round) / @Request.Voters.Length</p>
+    <p>Голосуют игроки и мастер; можно выбрать несколько окон. После ответа всех дата назначается автоматически.</p>
+    @foreach (var window in Options.Skip(page * 20).Take(20))
+    {
+      <div class="session-window session-window--@window.Color" @key="window.Key">
+        <label><input type="checkbox" disabled="@(!window.Eligible || !Request.Voters.Contains(UserId))" checked="@selected.Contains(window.Key)" @onchange="e => Select(window.Key, (bool)e.Value!)" />
+          @Local(window.StartUtc) — @Local(window.EndUtc) · @Format(window.Format) · @(window.Eligible ? window.Reason : "Больше недоступно")</label>
+        <p>К началу: @Names(window.Players.Where(x => x.AtUtc == window.StartUtc).Select(x => x.UserId))</p>
+        @foreach (var p in window.Players.Where(x => x.AtUtc > window.StartUtc)) { <p>@Names([p.UserId]) придёт @Local(p.AtUtc)</p> }
+        <p>Альтернативно доступны: @Names(window.Alternatives.Select(x => x.UserId))</p>
+        <p>Отсутствуют: @Names(window.Absent)</p>
+      </div>
+    }
+    @if (page > 0) { <button class="btn" @onclick="() => page--">Назад</button> }
+    @if ((page + 1) * 20 < Options.Count) { <button class="btn" @onclick="() => page++">Ещё окна</button> }
+    @if (Request.Voters.Contains(UserId))
+    {
+      <button class="btn btn--primary" @onclick="Vote">Сохранить выбор (@selected.Count)</button>
+      <button class="btn" @onclick="None">Ни один вариант не подходит</button>
+      @if (submitted) { <p>Ответ сохранён. Ожидаем остальных участников.</p> }
+    }
+  }
+</div>
+
+@code {
+  [Parameter, EditorRequired] public SchedulingRequest Request { get; set; } = default!;
+  [Parameter, EditorRequired] public List<ChatPerson> People { get; set; } = [];
+  [Parameter, EditorRequired] public ClaimsPrincipal User { get; set; } = default!;
+  [Parameter] public List<SchedulingBallot> Ballots { get; set; } = [];
+  [Parameter] public List<ScheduledGame> Games { get; set; } = [];
+  [Parameter] public Guid UserId { get; set; }
+  [Parameter] public string Zone { get; set; } = "Europe/Samara";
+  [Parameter] public EventCallback OnChanged { get; set; }
+  private HashSet<string> selected = [];
+  private int round = -1, page;
+  private bool submitted;
+  private string? error;
+  private List<SessionWindow> Options => JsonSerializer.Deserialize<List<SessionWindow>>(Request.OptionsJson)!;
+  private DateTime CalendarStart => TimeZoneInfo.ConvertTimeFromUtc(Request.StartUtc, TimeZoneInfo.FindSystemTimeZoneById(Zone)).Date;
+  private DateTime CalendarUntil
+  {
+    get { var end = TimeZoneInfo.ConvertTimeFromUtc(Request.EndUtc, TimeZoneInfo.FindSystemTimeZoneById(Zone)); return end.TimeOfDay == TimeSpan.Zero ? end.Date : end.Date.AddDays(1); }
+  }
+  private string StateLabel => Request.State switch { "waiting" => "Ожидаем доступные окна", "voting" => "Голосование", "assigned" => "Игра назначена", "no-votes" => "Нет голосов за допустимые окна", _ => "Завершено" };
+  private string Local(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(Zone)).ToString("dd.MM HH:mm");
+  private string Names(IEnumerable<Guid> ids) => string.Join(", ", ids.Select(id => People.Find(x => x.Id == id)?.Name ?? "Участник"));
+  private static string Format(PlayFormat f) => f == PlayFormat.Online ? "Онлайн" : "Офлайн";
+  protected override void OnParametersSet() { if (round != Request.Round) { round = Request.Round;
+    var own = Ballots.Find(x => x.RequestId == Request.Id && x.Round == round && x.UserId == UserId);
+    selected = own?.Keys.ToHashSet() ?? []; submitted = own is not null; page = 0; } selected.RemoveWhere(k => Options.All(o => o.Key != k || !o.Eligible)); }
+  private void Select(string key, bool value) { if (value) selected.Add(key); else selected.Remove(key); }
+  private async Task Vote()
+  {
+    try { error = null; await Scheduling.Ballot(User, Request.Id, Request.Round, selected.ToArray()); submitted = true; await OnChanged.InvokeAsync(); }
+    catch (Exception e) when (e is UnauthorizedAccessException or ArgumentException) { error = e is UnauthorizedAccessException ? "Нет доступа." : e.Message; }
+  }
+  private Task None() { selected.Clear(); return Vote(); }
+}

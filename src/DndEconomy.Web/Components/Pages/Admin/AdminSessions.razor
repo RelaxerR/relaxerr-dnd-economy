@@ -7,6 +7,8 @@
 @using DndEconomy.Domain.Enums
 @attribute [Authorize(Roles = RoleNames.Admin)]
 @inject IEconomyAdminService EconomyAdminService
+@inject DndEconomy.Application.Collaboration.ISchedulingService Scheduling
+@inject AuthenticationStateProvider Auth
 @inject IExcelEconomyImportService ExcelImportService
 @inject IJSRuntime JSRuntime
 @inject ToastService ToastService
@@ -59,6 +61,7 @@
                 @onclick="() => OpenEditModal(session)">
                 <td>
                   @session.Name
+                  @if (session.IsCancelled) { <span>Отменена</span> }
                   @if (session.Id == effectiveSessionId)
                   {
                     <span class="badge badge--player-suggested">Показывается игрокам</span>
@@ -79,7 +82,7 @@
                   {
                     <button type="button" class="btn" @onclick="() => TogglePinAsync(null)" @onclick:stopPropagation="true">Открепить</button>
                   }
-                  else
+                  else if (!session.IsCancelled)
                   {
                     <button type="button" class="btn" @onclick="() => TogglePinAsync(session.Id)" @onclick:stopPropagation="true">Показывать эту</button>
                   }
@@ -94,12 +97,14 @@
 
   <section class="auth-card">
     <h2>Создать сессию</h2>
+    @if (schedulingError is not null) { <p role="alert">@schedulingError</p> }
+    @if (ScheduledGameId is not null) { <p>Партия из расписания. Дата задаётся назначенной игрой; повторное сохранение не создаёт дубликат.</p> }
     <EditForm Model="newSession" OnValidSubmit="CreateSessionAsync">
       <DataAnnotationsValidator />
       <ValidationSummary class="validation-summary" />
 
       <div class="form-field"><label>Название</label><InputText @bind-Value="newSession.Name" /></div>
-      <div class="form-field"><label>Дата (реальная)</label><InputDate @bind-Value="newSession.RealDate" /></div>
+      <div class="form-field"><label>Дата (реальная)</label><InputDate @bind-Value="newSession.RealDate" disabled="@(ScheduledGameId is not null)" /></div>
       <div class="form-field"><label>Игровая дата</label><InputText @bind-Value="newSession.GameDateLabel" /></div>
       <div class="form-field">
         <label>Город</label>
@@ -182,6 +187,8 @@
                  ImportFunc="ExcelImportService.ImportSessionsAsync" OnImported="ReloadAsync" />
 
 @code {
+  [SupplyParameterFromQuery(Name = "scheduledGame")] public Guid? ScheduledGameId { get; set; }
+  private string? schedulingError;
   private IReadOnlyList<CitySummary>? cities;
   private IReadOnlyList<EconomySessionSummary>? sessions;
   private Guid? effectiveSessionId;
@@ -193,6 +200,15 @@
   protected override async Task OnInitializedAsync()
   {
     await ReloadAsync();
+    if (ScheduledGameId is { } gameId)
+    {
+      try
+      {
+        var game = await Scheduling.Game((await Auth.GetAuthenticationStateAsync()).User, gameId);
+        newSession.RealDate = game.Date.ToDateTime(TimeOnly.MinValue);
+      }
+      catch (Exception e) when (e is ArgumentException or UnauthorizedAccessException) { schedulingError = "Игра недоступна."; }
+    }
   }
 
   private async Task ReloadAsync()
@@ -202,10 +218,10 @@
 
     var today = DateOnly.FromDateTime(DateTime.Today);
     var naturalSession = sessions
-      .Where(s => s.RealDate <= today)
+      .Where(s => !s.IsCancelled && s.RealDate <= today)
       .OrderByDescending(s => s.RealDate)
       .FirstOrDefault();
-    var pinnedSession = sessions.FirstOrDefault(s => s.IsPinnedForDisplay);
+    var pinnedSession = sessions.FirstOrDefault(s => !s.IsCancelled && s.IsPinnedForDisplay);
 
     // Та же логика, что и в EconomyPricingReadStore.GetActiveSessionContextAsync: закреплённая
     // сессия побеждает, пока не наступит дата более новой.
@@ -225,7 +241,7 @@
   {
     Guid? cityId = Guid.TryParse(newSession.CityId, out var parsed) ? parsed : null;
 
-    await EconomyAdminService.CreateSessionAsync(new NewEconomySessionInput
+    var input = new NewEconomySessionInput
     {
       Name = newSession.Name,
       RealDate = DateOnly.FromDateTime(newSession.RealDate),
@@ -234,7 +250,13 @@
       Season = newSession.Season,
       BaseCoefficient = newSession.BaseCoefficient,
       SellCoefficient = newSession.SellCoefficient
-    }, CancellationToken.None);
+    };
+    try
+    {
+      if (ScheduledGameId is { } gameId) await Scheduling.CreateEconomy((await Auth.GetAuthenticationStateAsync()).User, gameId, input);
+      else await EconomyAdminService.CreateSessionAsync(input, CancellationToken.None);
+    }
+    catch (Exception e) when (e is ArgumentException or UnauthorizedAccessException) { schedulingError = e is UnauthorizedAccessException ? "Нет доступа." : e.Message; return; }
 
     newSession = new() { RealDate = DateTime.Today };
     await ReloadAsync();
@@ -294,7 +316,8 @@
     if (!confirmed)
       return;
 
-    await EconomyAdminService.DeleteSessionAsync(editingSessionId.Value, CancellationToken.None);
+    try { await EconomyAdminService.DeleteSessionAsync(editingSessionId.Value, CancellationToken.None); }
+    catch (ArgumentException e) { schedulingError = e.Message; CloseEditModal(); return; }
     CloseEditModal();
     await ReloadAsync();
     ToastService.ShowSuccess("Сессия удалена");

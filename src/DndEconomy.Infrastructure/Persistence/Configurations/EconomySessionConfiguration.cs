@@ -9,6 +9,7 @@ public class EconomySessionConfiguration : IEntityTypeConfiguration<EconomySessi
 {
   public void Configure(EntityTypeBuilder<EconomySession> builder)
   {
+    builder.ToTable(t => t.HasCheckConstraint("CK_EconomySession_CancelledNotPinned", "NOT (\"IsCancelled\" AND \"IsPinnedForDisplay\")"));
     builder.Property(x => x.Name).HasMaxLength(150).IsRequired();
     builder.Property(x => x.GameDateLabel).HasMaxLength(100);
     builder.Property(x => x.BaseCoefficient).HasPrecision(10, 4);
