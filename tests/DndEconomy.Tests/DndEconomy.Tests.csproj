@@ -5,5 +5,6 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5"><PrivateAssets>all</PrivateAssets></PackageReference>
     <ProjectReference Include="../../src/DndEconomy.Infrastructure/DndEconomy.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/DndEconomy.Web/DndEconomy.Web.csproj" />
   </ItemGroup>
 </Project>

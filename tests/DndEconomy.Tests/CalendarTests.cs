@@ -132,4 +132,37 @@ public sealed class CalendarTests
     Assert.Equal(hours == 23 ? 4 : 6, slices.Where(x => x.Format == PlayFormat.Online).Sum(x => (x.EndUtc - x.StartUtc).TotalHours));
     Assert.All(slices, x => Assert.Equal(rule.Id, x.RuleId));
   }
+  [Fact]
+  public void WorkdaysCanRepeatWithoutEndAtPreciseTimesForYears()
+  {
+    var rule = new AvailabilityRule { UserId = Master, Zone = "Europe/Samara", Repeat = RepeatKind.Weekly,
+      Days = [1, 2, 3, 4, 5], Status = AvailabilityStatus.Unavailable,
+      LocalStart = new(2026, 11, 16, 7, 45, 0), LocalEnd = new(2026, 11, 16, 16, 30, 0) };
+    var from = CalendarEngine.ToUtc(new(2030, 11, 18), rule.Zone);
+    var slices = CalendarEngine.Expand([rule], from, from.AddDays(7));
+    Assert.Equal(10, slices.Count);
+    Assert.All(slices, s => { Assert.Equal(AvailabilityStatus.Unavailable, s.Status);
+      Assert.Equal(new TimeSpan(3, 45, 0), s.StartUtc.TimeOfDay); Assert.Equal(8.75, (s.EndUtc - s.StartUtc).TotalHours); });
+    rule.RepeatUntil = new(2026, 12, 31);
+    Assert.Empty(CalendarEngine.Expand([rule], from, from.AddDays(7)));
+  }
+
+  [Fact]
+  public void BoundedRepeatIncludesLastDayAndStopsAfterIt()
+  {
+    var rule = new AvailabilityRule { UserId = Master, Zone = "UTC", Repeat = RepeatKind.Daily,
+      LocalStart = new(2026, 12, 1, 7, 45, 0), LocalEnd = new(2026, 12, 1, 16, 30, 0), RepeatUntil = new(2026, 12, 2) };
+    Assert.Equal(4, CalendarEngine.Expand([rule], Start.Date, Start.AddDays(4)).Count);
+  }
+
+  [Fact]
+  public void ThreadNamesUseDistinctCompactMessagePreview()
+  {
+    Assert.Equal("Ветка: Поход в таверну", ChatThreadNames.FromMessage("Поход\n  в таверну"));
+    Assert.NotEqual(ChatThreadNames.FromMessage("Поход в таверну"), ChatThreadNames.FromMessage("Поход в шахту"));
+    Assert.True(ChatThreadNames.FromMessage(new string('я', 200)).Length <= 80);
+    var emojiTitle = ChatThreadNames.FromMessage(string.Concat(Enumerable.Repeat("🙂", 100)));
+    Assert.True(emojiTitle.Length <= 200);
+    _ = new System.Text.UTF8Encoding(false, true).GetBytes(emojiTitle);
+  }
 }

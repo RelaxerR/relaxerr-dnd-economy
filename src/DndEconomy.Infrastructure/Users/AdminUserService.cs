@@ -2,8 +2,11 @@ using DndEconomy.Application.Users;
 using DndEconomy.Domain.Constants;
 using DndEconomy.Domain.Entities;
 using DndEconomy.Infrastructure.Persistence;
+using DndEconomy.Infrastructure.Collaboration;
+using DndEconomy.Domain.Collaboration;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace DndEconomy.Infrastructure.Users;
 
@@ -12,11 +15,13 @@ public sealed class AdminUserService : IAdminUserService
 {
   private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
   private readonly UserManager<ApplicationUser> _userManager;
+  private readonly ILogger<AdminUserService> _logger;
 
-  public AdminUserService(IDbContextFactory<ApplicationDbContext> dbContextFactory, UserManager<ApplicationUser> userManager)
+  public AdminUserService(IDbContextFactory<ApplicationDbContext> dbContextFactory, UserManager<ApplicationUser> userManager, ILogger<AdminUserService> logger)
   {
     _dbContextFactory = dbContextFactory;
     _userManager = userManager;
+    _logger = logger;
   }
 
   /// <inheritdoc />
@@ -44,6 +49,7 @@ public sealed class AdminUserService : IAdminUserService
       Email = user.Email ?? "",
       DisplayName = user.DisplayName,
       MustChangePassword = user.MustChangePassword,
+      IsActive = user.IsActive,
       Roles = rolesByUser.TryGetValue(user.Id, out var roles) ? roles : []
     }).ToList();
   }
@@ -75,6 +81,34 @@ public sealed class AdminUserService : IAdminUserService
   }
 
   /// <inheritdoc />
+  public async Task<IReadOnlyList<string>> SetActiveAsync(Guid requestingAdminId, Guid userId, bool isActive, CancellationToken cancellationToken)
+  {
+    await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+    await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+    await ChatAccess.Lock(db);
+    var adminIds = await (from ur in db.UserRoles join role in db.Roles on ur.RoleId equals role.Id
+      where role.Name == RoleNames.Admin select ur.UserId).ToArrayAsync(cancellationToken);
+    if (!adminIds.Contains(requestingAdminId) || !await db.Users.AnyAsync(x => x.Id == requestingAdminId && x.IsActive, cancellationToken))
+      return ["Нет доступа к управлению пользователями."];
+    if (!isActive && requestingAdminId == userId) return ["Нельзя отключить самого себя."];
+    var user = await db.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+    if (user is null) return ["Пользователь не найден."];
+    if (user.IsActive == isActive) return [];
+    if (!isActive && adminIds.Contains(userId) && await db.Users.CountAsync(x => x.IsActive && adminIds.Contains(x.Id), cancellationToken) <= 1)
+      return ["Нельзя отключить последнего активного администратора."];
+    user.IsActive = isActive;
+    user.SecurityStamp = Guid.NewGuid().ToString();
+    user.ConcurrencyStamp = Guid.NewGuid().ToString();
+    await db.Set<ChatPresence>().Where(x => x.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+    await db.SaveChangesAsync(cancellationToken);
+    await SchedulingService.Recalculate(db, DateTime.UtcNow);
+    await db.SaveChangesAsync(cancellationToken);
+    await tx.CommitAsync(cancellationToken);
+    _logger.LogInformation("Администратор {AdminId} изменил активность пользователя {UserId}: {IsActive}", requestingAdminId, userId, isActive);
+    return [];
+  }
+
+  /// <inheritdoc />
   public async Task<IReadOnlyList<string>> DeleteUserAsync(Guid requestingAdminId, Guid userId, CancellationToken cancellationToken)
   {
     if (requestingAdminId == userId)
@@ -87,7 +121,7 @@ public sealed class AdminUserService : IAdminUserService
     if (await _userManager.IsInRoleAsync(user, RoleNames.Admin))
     {
       var admins = await _userManager.GetUsersInRoleAsync(RoleNames.Admin);
-      if (admins.Count <= 1)
+      if (user.IsActive && admins.Count(x => x.IsActive) <= 1)
         return ["Нельзя удалить последнего администратора."];
     }
 

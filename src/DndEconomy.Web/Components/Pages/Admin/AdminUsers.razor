@@ -44,6 +44,9 @@
               <text> · ждёт смены временного пароля</text>
             }
           </span>
+          <label class="admin-user-active"><input type="checkbox" checked="@user.IsActive" disabled="@(user.Id == currentUserId || changingActivity)"
+            aria-label="@($"Активен: {user.DisplayName}")" @onchange="e => SetActiveAsync(user, (bool)e.Value!)" /> Активен</label>
+          @if (!user.IsActive) { <span>Учётка временно не активна</span> }
           @if (user.Id != currentUserId)
           {
             <button class="btn admin-user-row__delete" @onclick="() => DeleteUserAsync(user)">Удалить</button>
@@ -92,6 +95,7 @@
   private List<string> errors = [];
   private Guid currentUserId;
   private NewUserModel newUser = new();
+  private bool changingActivity;
 
   protected override async Task OnInitializedAsync()
   {
@@ -121,6 +125,18 @@
     newUser = new();
     users = await AdminUserService.GetUsersAsync(CancellationToken.None);
     ToastService.ShowSuccess("Пользователь создан");
+  }
+
+  private async Task SetActiveAsync(UserSummary user, bool active)
+  {
+    changingActivity = true;
+    try
+    {
+      errors = (await AdminUserService.SetActiveAsync(currentUserId, user.Id, active, CancellationToken.None)).ToList();
+      users = await AdminUserService.GetUsersAsync(CancellationToken.None);
+      if (errors.Count == 0) ToastService.ShowSuccess(active ? "Учётная запись активирована" : "Учётная запись временно отключена");
+    }
+    finally { changingActivity = false; }
   }
 
   private async Task DeleteUserAsync(UserSummary user)

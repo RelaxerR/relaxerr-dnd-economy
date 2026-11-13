@@ -10,7 +10,7 @@ public static class CollaborationNotices
   /// <summary>Готовит уведомления только фактическим участникам области, а не всем администраторам.</summary>
   public static async Task Add(ApplicationDbContext db, ChatMessage message, ChatRoom room, string kind, string key)
   {
-    var users = await db.Users.Where(x => !x.MustChangePassword && (x.Id != message.AuthorId || kind == "assigned" || kind == "cancelled" || kind == "reminder")).ToListAsync();
+    var users = await db.Users.Where(x => x.IsActive && !x.MustChangePassword && (x.Id != message.AuthorId || kind == "assigned" || kind == "cancelled" || kind == "reminder")).ToListAsync();
     var prefs = await db.Set<ChatPreference>().ToListAsync();
     foreach (var user in users)
     {

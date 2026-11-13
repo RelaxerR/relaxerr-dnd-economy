@@ -85,6 +85,11 @@
       Logger.LogInformation("Пользователь {Email} вошёл в систему.", Input.Email);
       RedirectManager.RedirectTo(ReturnUrl ?? "/catalog");
     }
+    else if (result.IsNotAllowed && await SignInManager.UserManager.FindByNameAsync(Input.Email) is { IsActive: false } inactive
+      && await SignInManager.UserManager.CheckPasswordAsync(inactive, Input.Password))
+    {
+      errorMessage = "Error: учётная запись временно не активна. Обратитесь к администратору.";
+    }
     else if (result.IsLockedOut)
     {
       Logger.LogWarning("Учётная запись {Email} временно заблокирована после серии неверных попыток входа.", Input.Email);

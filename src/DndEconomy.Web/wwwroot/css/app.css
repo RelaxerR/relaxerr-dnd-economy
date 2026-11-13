@@ -933,3 +933,24 @@ body {
   .calendar-toolbar > a::after { content: '⚙'; font-size: 1.1rem; }
   .calendar-hint { display: none; }
 }
+
+/* One set of weekday buttons is both the grid header and the mobile day selector. */
+.calendar-week-header { position: sticky; top: 0; z-index: 5; grid-column: 1 / -1; display: grid; grid-template-columns: 52px repeat(7, minmax(0, 1fr)); background: #f3eee5; }
+.calendar-week-header .calendar-column-title { position: static; cursor: pointer; height: 52px; padding: 7px 0; border-right: 1px solid #e2d9cc; }
+.calendar-column-title--selected { background: #8b5e34; color: white; }
+.calendar-hours > div { height: 64px; font-size: .72rem; text-align: center; color: #7c7264; }
+.calendar-time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.calendar-editor .calendar-checkbox { display: flex; gap: 8px; align-items: center; }
+.calendar-editor .calendar-checkbox input { width: auto; }
+.admin-user-row { flex-wrap: wrap; }
+.admin-user-active { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.chat-shell .chat-thread-title { margin: 0; padding: 8px 22px; border-bottom: 1px solid #e6dfd3; }
+.chat-thread-title summary { cursor: pointer; font-size: .8rem; }
+@media (max-width: 700px) {
+  .calendar-week-header { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .calendar-week-header > span { display: none; }
+  .calendar-week-header .calendar-column-title { font-size: .7rem; }
+  .chat-conversation-header h2 { overflow-wrap: anywhere; }
+}
+.chat-conversation-header > div { min-width: 0; }
+.chat-sidebar > .btn { overflow-wrap: anywhere; }

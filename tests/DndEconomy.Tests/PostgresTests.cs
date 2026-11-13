@@ -18,6 +18,17 @@ using DndEconomy.Infrastructure.Activities;
 using DndEconomy.Infrastructure.Persistence;
 using DndEconomy.Infrastructure.Pricing;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using DndEconomy.Infrastructure;
+using DndEconomy.Infrastructure.Users;
+using DndEconomy.Application.Users;
+using DndEconomy.Infrastructure.Identity;
+using DndEconomy.Web.Services;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -85,6 +96,10 @@ public sealed class PostgresTests
       await chat.Read(principals[2], room, [dm]);
       Assert.False((await chat.Snapshot(principals[2], room, 50, false)).Unread.ContainsKey(room));
       var thread = await chat.Thread(principals[2], dm);
+      Assert.Equal("Ветка: private needle", (await chat.Snapshot(principals[2], thread, 50, false)).CurrentRoom.Name);
+      await chat.RenameThread(principals[2], thread, "Личные планы");
+      Assert.Equal("Личные планы", (await chat.Snapshot(principals[2], thread, 50, false)).CurrentRoom.Name);
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => chat.RenameThread(principals[3], thread, "Запрещено"));
       await chat.Send(principals[2], thread, "private reply", []);
       var outsider = await chat.Snapshot(principals[3], room, 50, false);
       Assert.DoesNotContain(outsider.Messages, x => x.Message.Id == dm);
@@ -257,6 +272,123 @@ public sealed class PostgresTests
       Requests++; Assert.Equal("fcm.googleapis.com", request.RequestUri!.Host);
       return Task.FromResult(new HttpResponseMessage(Status));
     }
+  }
+
+  [PostgresFact]
+  public async Task InactiveAccountsLoseAccessParticipationAndNotificationsAndOldSessionsStayRevoked()
+  {
+    var connection = Environment.GetEnvironmentVariable("DND_TEST_POSTGRES")!;
+    var name = "relaxerr_activity_test_" + Guid.NewGuid().ToString("N");
+    await using var admin = new NpgsqlConnection(connection); await admin.OpenAsync();
+    await using (var create = new NpgsqlCommand($"CREATE DATABASE {name}", admin)) await create.ExecuteNonQueryAsync();
+    var cs = new NpgsqlConnectionStringBuilder(connection) { Database = name }.ConnectionString;
+    var factory = new TestFactory(cs);
+    try
+    {
+      var users = Enumerable.Range(0, 3).Select(i => new ApplicationUser { Id = Guid.NewGuid(), UserName = $"active{i}@test.invalid",
+        NormalizedUserName = $"ACTIVE{i}@TEST.INVALID", Email = $"active{i}@test.invalid", DisplayName = $"Active {i}",
+        MustChangePassword = false, SecurityStamp = Guid.NewGuid().ToString() }).ToArray();
+      foreach (var u in users) u.PasswordHash = new PasswordHasher<ApplicationUser>().HashPassword(u, "Test123!Password");
+      Guid legacyRule;
+      await using (var db = factory.CreateDbContext())
+      {
+        await db.GetService<IMigrator>().MigrateAsync("20261113112144_HardenScheduledGamesAndPushSubscriptions");
+        foreach (var u in users)
+          await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"AspNetUsers\" (\"Id\",\"UserName\",\"NormalizedUserName\",\"Email\",\"DisplayName\",\"MustChangePassword\",\"CreatedAtUtc\",\"SecurityStamp\",\"PasswordHash\",\"EmailConfirmed\",\"PhoneNumberConfirmed\",\"TwoFactorEnabled\",\"LockoutEnabled\",\"AccessFailedCount\") VALUES ({u.Id},{u.UserName},{u.NormalizedUserName},{u.Email},{u.DisplayName},false,{u.CreatedAtUtc},{u.SecurityStamp},{u.PasswordHash},false,false,false,false,0)");
+        legacyRule = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"AvailabilityRule\" (\"Id\",\"UserId\",\"LocalStart\",\"LocalEnd\",\"Zone\",\"Status\",\"Format\",\"Repeat\",\"Days\",\"UpdatedUtc\") VALUES ({legacyRule},{users[0].Id},'2026-11-01 07:45'::timestamp,'2026-11-30 16:30'::timestamp,'UTC',3,3,2,ARRAY[1,2,3,4,5],{DateTime.UtcNow})");
+        await db.Database.MigrateAsync();
+        Assert.All(await db.Users.ToListAsync(), u => Assert.True(u.IsActive));
+        Assert.Equal(new DateOnly(2026, 11, 30), (await db.Set<AvailabilityRule>().SingleAsync()).RepeatUntil);
+        var gm = new IdentityRole<Guid> { Id = Guid.NewGuid(), Name = "Admin", NormalizedName = "ADMIN" };
+        var player = new IdentityRole<Guid> { Id = Guid.NewGuid(), Name = "Player", NormalizedName = "PLAYER" };
+        db.AddRange(gm, player);
+        for (var i = 0; i < users.Length; i++) db.UserRoles.Add(new() { UserId = users[i].Id, RoleId = i == 0 ? gm.Id : player.Id });
+        await db.SaveChangesAsync();
+      }
+      ClaimsPrincipal Principal(ApplicationUser u) => new(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, u.Id.ToString()),
+        new Claim("AspNet.Identity.SecurityStamp", u.SecurityStamp!) }, "test"));
+      var principals = users.Select(Principal).ToArray();
+      var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Default"] = cs }).Build();
+      var services = new ServiceCollection(); services.AddLogging(); services.AddDataProtection(); services.AddSingleton<IConfiguration>(config); services.AddInfrastructure(config);
+      await using var provider = services.BuildServiceProvider();
+      await using var scope = provider.CreateAsyncScope();
+      var accounts = scope.ServiceProvider.GetRequiredService<IAdminUserService>();
+      var access = scope.ServiceProvider.GetRequiredService<AccountAccess>();
+      var chat = scope.ServiceProvider.GetRequiredService<IChatService>();
+      var scheduling = scope.ServiceProvider.GetRequiredService<ISchedulingService>();
+      var room = await chat.Main(principals[0]);
+      var tomorrow = DateTime.UtcNow.Date.AddDays(1);
+      foreach (var principal in principals) await scheduling.SaveRule(principal, new() { Zone = "UTC", LocalStart = tomorrow.AddHours(19), LocalEnd = tomorrow.AddHours(23) });
+      var openEnded = new AvailabilityRule { Zone = "UTC", Repeat = RepeatKind.Weekly, Days = [1,2,3,4,5], Status = AvailabilityStatus.Unavailable,
+        LocalStart = tomorrow.Date.AddHours(7).AddMinutes(45), LocalEnd = tomorrow.Date.AddHours(16).AddMinutes(30) };
+      await scheduling.SaveRule(principals[1], openEnded);
+      Assert.Null((await scheduling.Calendar(principals[1])).Single(x => x.Id == openEnded.Id).RepeatUntil);
+      var requestId = await scheduling.Request(principals[0], room, "UTC", new() { MinimumPlayers = 1 });
+      var request = (await chat.Snapshot(principals[0], room, 100, false)).Requests.Single();
+      var key = JsonSerializer.Deserialize<List<SessionWindow>>(request.OptionsJson)![0].Key;
+      await scheduling.Ballot(principals[0], requestId, request.Round, [key]);
+      await scheduling.Ballot(principals[1], requestId, request.Round, [key]);
+      Assert.Empty((await chat.Snapshot(principals[0], room, 100, false)).Games);
+      Assert.NotEmpty(await accounts.SetActiveAsync(users[0].Id, users[0].Id, false, default));
+      Assert.NotEmpty(await accounts.SetActiveAsync(users[1].Id, users[2].Id, false, default));
+      var auth = new TestAuthenticationState(principals[2]);
+      var navigation = new TestNavigation();
+      var circuit = new ActiveUserCircuitHandler(auth, access, navigation);
+      var dispatched = 0;
+      var inbound = circuit.CreateInboundActivityHandler(_ => { dispatched++; return Task.CompletedTask; });
+      await inbound(null!); Assert.Equal(1, dispatched);
+      Assert.Empty(await accounts.SetActiveAsync(users[0].Id, users[2].Id, false, default));
+      await inbound(null!); Assert.Equal(1, dispatched); Assert.EndsWith("/Account/Inactive", navigation.Target);
+      auth.Principal = new ClaimsPrincipal(new ClaimsIdentity());
+      await inbound(null!); Assert.Equal(1, dispatched);
+      Assert.Equal(AccountSessionState.Inactive, await access.Check(principals[2]));
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => chat.Send(principals[2], room, "Denied", []));
+      await Assert.ThrowsAsync<ArgumentException>(() => chat.Send(principals[0], room, "Do not send publicly", [users[2].Id]));
+      var snapshot = await chat.Snapshot(principals[0], room, 100, false);
+      Assert.DoesNotContain(users[2].Id, snapshot.Requests.Single().Voters);
+      Assert.False(snapshot.People.Single(x => x.Id == users[2].Id).IsActive);
+      Assert.Equal(users[2].DisplayName, snapshot.People.Single(x => x.Id == users[2].Id).Name);
+      Assert.Single(snapshot.Games);
+      await chat.Send(principals[0], room, "Active players only", []);
+      await using (var db = factory.CreateDbContext())
+        Assert.DoesNotContain(await db.Set<ChatNotice>().Where(x => x.UserId == users[2].Id).ToListAsync(), n => n.Title == "Новое сообщение");
+      await using (var signInScope = provider.CreateAsyncScope())
+      {
+        var signIn = signInScope.ServiceProvider.GetRequiredService<SignInManager<ApplicationUser>>();
+        var result = await signIn.PasswordSignInAsync(users[2].UserName!, "Test123!Password", false, true);
+        Assert.True(result.IsNotAllowed);
+        var http = new DefaultHttpContext { RequestServices = signInScope.ServiceProvider };
+        var context = new CookieValidatePrincipalContext(http, new AuthenticationScheme(IdentityConstants.ApplicationScheme, null, typeof(CookieAuthenticationHandler)),
+          new CookieAuthenticationOptions(), new AuthenticationTicket(principals[2], IdentityConstants.ApplicationScheme));
+        await signInScope.ServiceProvider.GetRequiredService<ActiveUserCookieEvents>().ValidatePrincipal(context);
+        Assert.Null(context.Principal);
+      }
+      Assert.Empty(await accounts.SetActiveAsync(users[0].Id, users[2].Id, true, default));
+      Assert.Equal(AccountSessionState.Invalid, await access.Check(principals[2]));
+      await using (var db = factory.CreateDbContext())
+      {
+        var reactivated = await db.Users.SingleAsync(x => x.Id == users[2].Id);
+        Assert.Equal(AccountSessionState.Valid, await access.Check(Principal(reactivated)));
+      }
+    }
+    finally
+    {
+      NpgsqlConnection.ClearAllPools();
+      await using var drop = new NpgsqlCommand($"DROP DATABASE {name} WITH (FORCE)", admin); await drop.ExecuteNonQueryAsync();
+    }
+  }
+
+  private sealed class TestAuthenticationState(ClaimsPrincipal principal) : AuthenticationStateProvider
+  {
+    public ClaimsPrincipal Principal { get; set; } = principal;
+    public override Task<AuthenticationState> GetAuthenticationStateAsync() => Task.FromResult(new AuthenticationState(Principal));
+  }
+  private sealed class TestNavigation : NavigationManager
+  {
+    public TestNavigation() => Initialize("http://localhost/", "http://localhost/catalog");
+    public string Target { get; private set; } = "";
+    protected override void NavigateToCore(string uri, bool forceLoad) => Target = uri;
   }
 
   private sealed class TestFactory(string connection) : IDbContextFactory<ApplicationDbContext>
