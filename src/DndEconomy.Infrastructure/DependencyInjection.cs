@@ -98,7 +98,10 @@ public static class DependencyInjection
       .AddRoles<IdentityRole<Guid>>()
       .AddEntityFrameworkStores<ApplicationDbContext>()
       .AddClaimsPrincipalFactory<ApplicationUserClaimsPrincipalFactory>()
-      .AddSignInManager();
+      .AddSignInManager<ActiveUserSignInManager>();
+    services.AddScoped<AccountAccess>();
+    services.AddScoped<ActiveUserCookieEvents>();
+    services.ConfigureApplicationCookie(options => options.EventsType = typeof(ActiveUserCookieEvents));
 
     var authenticationBuilder = services
       .AddAuthentication(options =>

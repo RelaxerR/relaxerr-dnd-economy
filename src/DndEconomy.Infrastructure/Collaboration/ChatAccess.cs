@@ -18,7 +18,7 @@ public static class ChatAccess
     if (principal.Identity?.IsAuthenticated != true || !Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id))
       throw new UnauthorizedAccessException();
     var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id);
-    if (user is null || user.MustChangePassword || user.LockoutEnd > DateTimeOffset.UtcNow)
+    if (user is null || !user.IsActive || user.MustChangePassword || user.LockoutEnd > DateTimeOffset.UtcNow)
       throw new UnauthorizedAccessException();
     var stamp = principal.FindFirstValue("AspNet.Identity.SecurityStamp");
     if (stamp is null || stamp != user.SecurityStamp) throw new UnauthorizedAccessException();

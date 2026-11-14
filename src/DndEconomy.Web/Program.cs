@@ -54,6 +54,7 @@ builder.Services.AddCors(options => options.AddPolicy(CorsPolicyNames.FoundryVtt
   .WithMethods("GET", "POST")));
 
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, ActiveUserCircuitHandler>();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 builder.Services.AddScoped<DndEconomy.Web.Services.ToastService>();

@@ -17,6 +17,9 @@ public interface IAdminUserService
   Task<IReadOnlyList<string>> InviteUserAsync(
     Guid invitedByUserId, string email, string displayName, string temporaryPassword, string role, CancellationToken cancellationToken);
 
+  /// <summary>Включает или временно отключает учётку, отзывает сессии и пересчитывает подбор.</summary>
+  Task<IReadOnlyList<string>> SetActiveAsync(Guid requestingAdminId, Guid userId, bool isActive, CancellationToken cancellationToken);
+
   /// <summary>
   /// Удаляет пользователя безвозвратно. Отклоняется (с сообщением об ошибке), если админ пытается
   /// удалить сам себя или последнего оставшегося администратора — иначе можно случайно остаться

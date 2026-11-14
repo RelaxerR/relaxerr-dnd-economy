@@ -20,6 +20,8 @@ public sealed class AvailabilityRule
   public DateTime? EndUtc { get; set; }
   public AvailabilityStatus Status { get; set; }
   public PlayFormat Format { get; set; } = PlayFormat.Both;
+  /// <summary>Последний день серии включительно; null — повтор без даты окончания.</summary>
+  public DateOnly? RepeatUntil { get; set; }
   public RepeatKind Repeat { get; set; }
   public int[] Days { get; set; } = [];
   public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;

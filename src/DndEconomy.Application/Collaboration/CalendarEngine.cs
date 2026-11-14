@@ -52,7 +52,7 @@ public static class CalendarEngine
         var last = TimeZoneInfo.ConvertTimeFromUtc(until, tz).Date;
         for (var date = first; date <= last; date = date.AddDays(1))
         {
-          if (date < rule.LocalStart.Date || date > rule.LocalEnd.Date) continue;
+          if (date < rule.LocalStart.Date || rule.RepeatUntil is { } repeatUntil && DateOnly.FromDateTime(date) > repeatUntil) continue;
           if (rule.Repeat == RepeatKind.Weekly && !rule.Days.Contains((int)date.DayOfWeek)) continue;
           if (rule.Repeat == RepeatKind.Monthly && !rule.Days.Contains(date.Day)) continue;
           var start = date + rule.LocalStart.TimeOfDay;

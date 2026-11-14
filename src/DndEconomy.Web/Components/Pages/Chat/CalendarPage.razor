@@ -14,7 +14,7 @@
 @if (!string.IsNullOrEmpty(error)) { <p role="alert" class="status-message">@error</p> }
 @if (preference is not null)
 {
-  <div class="calendar-toolbar">
+  <div class="calendar-toolbar calendar-toolbar--navigation">
     <button class="btn" aria-label="Предыдущая неделя" @onclick="() => MoveWeek(-7)">←</button>
     <button class="btn" @onclick="Today">Сегодня</button>
     <button class="btn" aria-label="Следующая неделя" @onclick="() => MoveWeek(7)">→</button>
@@ -28,21 +28,21 @@
     <button class="btn" @onclick="() => AllDay(AvailabilityStatus.Unavailable)">Весь день занят</button>
   </div>
   <p class="calendar-hint">Выберите время на шкале, чтобы добавить окно. Пустое время — не заполнено.</p>
-  <div class="calendar-days" aria-label="Выбор дня">
-    @for (var i = 0; i < 7; i++)
-    {
-      var day = week.AddDays(i);
-      <button class="btn @(day == selectedDay ? "btn--primary" : "") @(InRequest(day) ? "calendar-in-request" : "")" aria-pressed="@(day == selectedDay)" @onclick="() => SelectDay(day)">@day.ToString("ddd", Russian)<br />@day.Day</button>
-    }
-  </div>
   <div class="calendar-scroll" tabindex="0" aria-label="Недельная сетка доступности">
     <div class="calendar-grid">
-      <div class="calendar-hours"><div class="calendar-column-title">Часы</div>@for (var h = 0; h < WeekHours; h++) { <div>@($"{h:00}:00")</div> }</div>
+      <div class="calendar-week-header" aria-label="Выбор дня">
+        <span class="calendar-column-title">Часы</span>
+        @for (var i = 0; i < 7; i++)
+        {
+          var day = week.AddDays(i);
+          <button class="calendar-column-title @(day == selectedDay ? "calendar-column-title--selected" : "") @(InRequest(day) ? "calendar-in-request" : "")" aria-pressed="@(day == selectedDay ? "true" : "false")" @onclick="() => SelectDay(day)">@day.ToString("ddd", Russian)<br />@day.ToString("dd.MM")</button>
+        }
+      </div>
+      <div class="calendar-hours">@for (var h = 0; h < WeekHours; h++) { <div>@($"{h:00}:00")</div> }</div>
       @for (var i = 0; i < 7; i++)
       {
         var day = week.AddDays(i);
         <section class="calendar-day @(day == selectedDay ? "calendar-day--selected" : "") @(InRequest(day) ? "calendar-in-request" : "")" aria-label="@day.ToString("dd MMMM", Russian)">
-          <button class="calendar-column-title" @onclick="() => SelectDay(day)">@day.ToString("ddd, dd.MM", Russian)</button>
           <div class="calendar-track" style="height:@(WeekHours * 64)px">
             @for (var h = 0; h < DayHours(day); h++)
             {
@@ -70,16 +70,28 @@
         <p>Повторяющееся окно</p><div class="calendar-toolbar"><button class="btn @(!editSeries ? "btn--primary" : "")" @onclick="EditOccurrence">Только это окно</button><button class="btn @(editSeries ? "btn--primary" : "")" @onclick="EditSeries">Вся серия</button></div>
       }
       <p>Время: @rule.Zone</p>
-      <label>Начало<input autofocus type="datetime-local" @bind="rule.LocalStart" /></label>
-      <label>Окончание / последний день повтора<input type="datetime-local" @bind="rule.LocalEnd" /></label>
+      <label>@(rule.Repeat == RepeatKind.Once ? "Дата начала" : "Повторять начиная с")<input autofocus type="date" @bind="startDate" /></label>
+      <div class="calendar-time-fields">
+        <label>С<input type="time" @bind="startTime" /></label>
+        <label>До<input type="time" @bind="endTime" /></label>
+      </div>
+      @if (rule.Repeat == RepeatKind.Once)
+      { <label>Дата окончания<input type="date" @bind="endDate" /></label> }
+      else if (endTime <= startTime)
+      { <p>Окончание на следующий день.</p> }
       <label>Статус<select @bind="rule.Status">@foreach (var status in Enum.GetValues<AvailabilityStatus>().Where(x => x != AvailabilityStatus.Empty)) { <option value="@status">@Label(status)</option> }</select></label>
       <label>Формат<select @bind="rule.Format"><option value="@PlayFormat.Both">Онлайн и офлайн</option><option value="@PlayFormat.Online">Онлайн</option><option value="@PlayFormat.Offline">Офлайн</option></select></label>
       @if (sourceRule is null || sourceRule.Repeat == RepeatKind.Once || editSeries)
       {
         <details open="@(rule.Repeat != RepeatKind.Once)"><summary>Настроить повтор</summary>
           <label>Повтор<select @bind="rule.Repeat"><option value="@RepeatKind.Once">Разово</option><option value="@RepeatKind.Daily">Ежедневно</option><option value="@RepeatKind.Weekly">По дням недели</option><option value="@RepeatKind.Monthly">По числам месяца</option></select></label>
+          @if (rule.Repeat != RepeatKind.Once)
+          {
+            <label class="calendar-checkbox"><input type="checkbox" @bind="noRepeatEnd" /> Без даты окончания</label>
+            @if (!noRepeatEnd) { <label>Последний день повтора<input type="date" @bind="repeatEndDate" /></label> }
+          }
           @if (rule.Repeat == RepeatKind.Weekly)
-          { <div class="calendar-weekdays">@foreach (var n in new[] { 1, 2, 3, 4, 5, 6, 0 }) { var dayNumber = n; <button class="btn @(rule.Days.Contains(n) ? "btn--primary" : "")" aria-pressed="@rule.Days.Contains(n)" @onclick="() => ToggleDay(dayNumber)">@Russian.DateTimeFormat.GetAbbreviatedDayName((DayOfWeek)n)</button> }</div> }
+          { <button class="btn" @onclick="() => rule.Days = [1, 2, 3, 4, 5]">Будние дни</button><div class="calendar-weekdays">@foreach (var n in new[] { 1, 2, 3, 4, 5, 6, 0 }) { var dayNumber = n; <button class="btn @(rule.Days.Contains(n) ? "btn--primary" : "")" aria-pressed="@(rule.Days.Contains(n) ? "true" : "false")" @onclick="() => ToggleDay(dayNumber)">@Russian.DateTimeFormat.GetAbbreviatedDayName((DayOfWeek)n)</button> }</div> }
           @if (rule.Repeat == RepeatKind.Monthly) { <label>Числа месяца, через запятую<input @bind="days" placeholder="1,15,31" /></label> }
         </details>
       }
@@ -118,6 +130,9 @@
   private ChatPreference? preference;
   private List<AvailabilityRule> rules = [];
   private AvailabilityRule rule = new();
+  private DateTime startDate, endDate, repeatEndDate;
+  private TimeOnly startTime, endTime;
+  private bool noRepeatEnd = true;
   private DateTime from = DateTime.Today.AddDays(1), until = DateTime.Today.AddDays(8);
   private string days = "", error = "";
   private List<string> coverage = [];
@@ -176,7 +191,7 @@
   }
   private string BlockTime(AvailabilitySlice b, DateTime day) => $"{(LocalDate(b.StartUtc) < day ? "00:00" : LocalDate(b.StartUtc).ToString("HH:mm"))}–{(LocalDate(b.EndUtc) >= day.AddDays(1) ? "24:00" : LocalDate(b.EndUtc).ToString("HH:mm"))}";
   private string BlockLabel(AvailabilitySlice b) => $"{Local(b.StartUtc)} — {Local(b.EndUtc)} · {Label(b.Status)} · {Format(b.Format)}";
-  private void OpenSlot(DateTime time) { error = ""; selectedDay = time.Date; sourceRule = null; editSeries = false; rule = new() { Zone = preference!.Zone, LocalStart = time, LocalEnd = time.AddHours(1) }; days = ""; editorOpen = true; }
+  private void OpenSlot(DateTime time) { error = ""; selectedDay = time.Date; sourceRule = null; editSeries = false; rule = new() { Zone = preference!.Zone, LocalStart = time, LocalEnd = time.AddHours(1) }; days = ""; LoadEditor(); editorOpen = true; }
   private void OpenBlock(AvailabilitySlice block, DateTime day) { error = ""; sourceRule = rules.Single(x => x.Id == block.RuleId); occurrence = block; selectedDay = day; EditOccurrence(); editorOpen = true; }
   private void EditOccurrence()
   {
@@ -184,12 +199,27 @@
     var r = sourceRule!;
     if (r.Repeat == RepeatKind.Once) { Copy(r); return; }
     rule = new() { Zone = preference!.Zone, LocalStart = LocalDate(occurrence!.StartUtc), LocalEnd = LocalDate(occurrence.EndUtc), Status = occurrence.Status, Format = occurrence.Format };
+    LoadEditor();
   }
   private void EditSeries() { editSeries = true; Copy(sourceRule!); }
-  private void Copy(AvailabilityRule r) { rule = new() { Id = r.Id, Zone = r.Zone, LocalStart = r.LocalStart, LocalEnd = r.LocalEnd, Status = r.Status, Format = r.Format, Repeat = r.Repeat, Days = r.Days.ToArray() }; days = string.Join(',', r.Days); }
+  private void Copy(AvailabilityRule r) { rule = new() { Id = r.Id, Zone = r.Zone, LocalStart = r.LocalStart, LocalEnd = r.LocalEnd, Status = r.Status, Format = r.Format, Repeat = r.Repeat, RepeatUntil = r.RepeatUntil, Days = r.Days.ToArray() }; days = string.Join(',', r.Days); LoadEditor(); }
+  private void LoadEditor()
+  {
+    startDate = rule.LocalStart.Date; endDate = rule.LocalEnd.Date;
+    startTime = TimeOnly.FromDateTime(rule.LocalStart); endTime = TimeOnly.FromDateTime(rule.LocalEnd);
+    noRepeatEnd = rule.RepeatUntil is null;
+    repeatEndDate = rule.RepeatUntil?.ToDateTime(TimeOnly.MinValue) ?? startDate.AddMonths(1);
+  }
+  private void ApplyEditor()
+  {
+    rule.LocalStart = startDate.Date + startTime.ToTimeSpan();
+    rule.LocalEnd = (rule.Repeat == RepeatKind.Once ? endDate.Date : startDate.Date) + endTime.ToTimeSpan();
+    if (rule.Repeat != RepeatKind.Once && endTime <= startTime) rule.LocalEnd = rule.LocalEnd.AddDays(1);
+    rule.RepeatUntil = rule.Repeat == RepeatKind.Once || noRepeatEnd ? null : DateOnly.FromDateTime(repeatEndDate);
+  }
   private void ToggleDay(int day) => rule.Days = rule.Days.Contains(day) ? rule.Days.Where(x => x != day).ToArray() : [..rule.Days, day];
   private void EditorKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e) { if (e.Key == "Escape") editorOpen = false; }
-  private Task Save() => Run(async () => { if (rule.Repeat == RepeatKind.Monthly) rule.Days = days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToArray(); await Scheduling.SaveRule(user, rule); await Reload(); });
+  private Task Save() => Run(async () => { ApplyEditor(); if (rule.Repeat == RepeatKind.Monthly) rule.Days = days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToArray(); await Scheduling.SaveRule(user, rule); await Reload(); });
   private Task Delete(Guid id) => Run(async () => { await Scheduling.DeleteRule(user, id); await Reload(); });
   private async Task Reload() { rules = await Scheduling.Calendar(user); editorOpen = false; Expand(); await Coverage(); }
   private Task AllDay(AvailabilityStatus status) => Run(async () => { await Scheduling.SaveRule(user, new() { LocalStart = selectedDay.Date, LocalEnd = selectedDay.Date.AddDays(1), Zone = preference!.Zone, Status = status, Format = PlayFormat.Both }); await Reload(); });

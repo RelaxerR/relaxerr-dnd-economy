@@ -63,6 +63,13 @@ public sealed partial class ChatService(IDbContextFactory<ApplicationDbContext> 
     var rooms = await ChatAccess.Rooms(db, a).AsNoTracking()
       .Where(x => !x.IsThread || (archive ? x.ActivityUtc <= cutoff : x.ActivityUtc > cutoff))
       .OrderByDescending(x => x.IsMain).ThenByDescending(x => x.ActivityUtc).ToListAsync();
+    // Имена старых веток восстанавливаем из доступного корневого сообщения без переписывания истории.
+    var unnamed = rooms.Append(currentRoom).Where(x => x.IsThread && x.Name == "Ветка сообщения").ToArray();
+    var parentIds = unnamed.Select(x => x.ParentMessageId).ToArray();
+    var roots = await ChatAccess.Messages(db, a).Where(x => parentIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Text);
+    foreach (var thread in unnamed)
+      thread.Name = thread.ParentMessageId is { } parent && roots.TryGetValue(parent, out var text)
+        ? ChatThreadNames.FromMessage(text) : $"Ветка от {thread.ActivityUtc:dd.MM.yyyy} ({thread.Id.ToString()[..6]})";
     var roomIds = rooms.Select(x => x.Id).ToArray();
     var unread = await ChatAccess.Messages(db, a).Where(x => roomIds.Contains(x.RoomId) && x.AuthorId != a.Id &&
       !db.Set<ChatRead>().Any(r => r.MessageId == x.Id && r.UserId == a.Id))
@@ -79,10 +86,11 @@ public sealed partial class ChatService(IDbContextFactory<ApplicationDbContext> 
     var optionIds = options.Select(x => x.Id).ToArray();
     var votes = await db.Set<PollVote>().AsNoTracking().Where(x => optionIds.Contains(x.OptionId)).ToListAsync();
     var preferences = await db.Set<ChatPreference>().AsNoTracking().ToListAsync();
-    var users = await db.Users.AsNoTracking().Where(x => !x.MustChangePassword && (x.LockoutEnd == null || x.LockoutEnd <= DateTimeOffset.UtcNow)).ToListAsync();
-    var people = users.Select(x => new ChatPerson(x.Id, x.DisplayName, preferences.Find(p => p.UserId == x.Id)?.Color ?? "#8b4513")).ToList();
+    var users = await db.Users.AsNoTracking().ToListAsync();
+    var people = users.Select(x => new ChatPerson(x.Id, x.DisplayName, preferences.Find(p => p.UserId == x.Id)?.Color ?? "#8b4513") { IsActive = x.IsActive && !x.MustChangePassword && (x.LockoutEnd == null || x.LockoutEnd <= DateTimeOffset.UtcNow) }).ToList();
     // Онлайн — общий статус аккаунта, «печатает» — только в доступной комнате, без адресатов/текста черновика.
-    var presence = await db.Set<ChatPresence>().AsNoTracking().Where(x => x.SeenUtc > Now.AddSeconds(-45)).ToListAsync();
+    var activeIds = people.Where(x => x.IsActive).Select(x => x.Id).ToArray();
+    var presence = await db.Set<ChatPresence>().AsNoTracking().Where(x => activeIds.Contains(x.UserId) && x.SeenUtc > Now.AddSeconds(-45)).ToListAsync();
     var requests = await db.Set<SchedulingRequest>().AsNoTracking().Where(x => x.RoomId == room).ToListAsync();
     var requestIds = requests.Select(x => x.Id).ToArray();
     var games = await db.Set<ScheduledGame>().AsNoTracking().Where(x => requestIds.Contains(x.RequestId)).ToListAsync();
@@ -116,6 +124,15 @@ public sealed partial class ChatService(IDbContextFactory<ApplicationDbContext> 
   });
 
   /// <inheritdoc />
+  public Task RenameThread(ClaimsPrincipal user, Guid room, string name) => Write(user, async (db, a) =>
+  {
+    var target = await ChatAccess.Room(db, a, room);
+    if (!target.IsThread) throw new ArgumentException("Переименовать можно только ветку.");
+    target.Name = Text(name, 200);
+    return true;
+  });
+
+  /// <inheritdoc />
   public Task<Guid> Thread(ClaimsPrincipal user, Guid message) => Write(user, async (db, a) =>
   {
     var root = await ChatAccess.Message(db, a, message);
@@ -125,7 +142,7 @@ public sealed partial class ChatService(IDbContextFactory<ApplicationDbContext> 
     // Вложенная ветка не расширяет область даже при публичном ответе внутри личной ветки.
     var readers = root.Readers.Length > 0 ? root.Readers.Append(root.AuthorId).Distinct().ToArray() : parent.Readers;
     if (parent.Readers.Length > 0) readers = readers.Intersect(parent.Readers).ToArray();
-    var thread = new ChatRoom { Name = "Ветка сообщения", IsThread = true, ParentMessageId = message, Readers = readers, ActivityUtc = Now };
+    var thread = new ChatRoom { Name = ChatThreadNames.FromMessage(root.Text), IsThread = true, ParentMessageId = message, Readers = readers, ActivityUtc = Now };
     db.Add(thread); return thread.Id;
   });
 
@@ -133,7 +150,7 @@ public sealed partial class ChatService(IDbContextFactory<ApplicationDbContext> 
   {
     readers = readers.Distinct().ToArray();
     if (readers.Length > 100) throw new ArgumentException("Слишком много адресатов.");
-    var valid = await db.Users.Where(x => readers.Contains(x.Id) && !x.MustChangePassword).Select(x => x.Id).ToListAsync();
+    var valid = await db.Users.Where(x => readers.Contains(x.Id) && x.IsActive && !x.MustChangePassword).Select(x => x.Id).ToListAsync();
     if (valid.Count != readers.Length || room.Readers.Length > 0 && readers.Any(x => !room.Readers.Contains(x)))
       throw new ArgumentException("Адресат недоступен в этой ветке.");
     return readers.Length > 0 ? readers.Append(a.Id).Distinct().ToArray() : [];

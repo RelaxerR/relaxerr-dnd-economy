@@ -38,6 +38,8 @@ public sealed class SchedulingService(IDbContextFactory<ApplicationDbContext> fa
     rule.LocalEnd = DateTime.SpecifyKind(rule.LocalEnd, DateTimeKind.Unspecified);
     _ = TimeZoneInfo.FindSystemTimeZoneById(rule.Zone);
     if (rule.LocalEnd <= rule.LocalStart || rule.LocalEnd > rule.LocalStart.AddYears(2) ||
+        (rule.Repeat != RepeatKind.Once && rule.RepeatUntil is { } repeatUntil &&
+         (repeatUntil < DateOnly.FromDateTime(rule.LocalStart) || repeatUntil > DateOnly.FromDateTime(rule.LocalStart.AddYears(2)))) ||
         !Enum.IsDefined(rule.Status) || rule.Status == AvailabilityStatus.Empty || !Enum.IsDefined(rule.Repeat) || rule.Format is < PlayFormat.Online or > PlayFormat.Both)
       throw new ArgumentException("Проверьте границы, статус и формат окна.");
     if (rule.Repeat == RepeatKind.Weekly && (rule.Days.Length == 0 || rule.Days.Any(x => x is < 0 or > 6)) ||
@@ -47,6 +49,7 @@ public sealed class SchedulingService(IDbContextFactory<ApplicationDbContext> fa
     var copy = existing ?? new AvailabilityRule { Id = rule.Id, UserId = a.Id };
     if (existing is null) db.Add(copy);
     copy.LocalStart = rule.LocalStart; copy.LocalEnd = rule.LocalEnd; copy.Zone = rule.Zone;
+    copy.RepeatUntil = rule.Repeat == RepeatKind.Once ? null : rule.RepeatUntil;
     copy.Format = rule.Format; copy.Status = rule.Status; copy.Repeat = rule.Repeat; copy.Days = rule.Days.Distinct().ToArray(); copy.UpdatedUtc = Now;
     var lastEdit = await db.Set<AvailabilityRule>().MaxAsync(x => (DateTime?)x.UpdatedUtc);
     if (lastEdit >= copy.UpdatedUtc) copy.UpdatedUtc = lastEdit.Value.AddTicks(10); // PostgreSQL: точность микросекунды.
@@ -72,7 +75,7 @@ public sealed class SchedulingService(IDbContextFactory<ApplicationDbContext> fa
 
   internal static async Task<Guid[]> Players(ApplicationDbContext db, Guid master)
   {
-    return await db.Users.Where(x => x.Id != master && !x.MustChangePassword && (x.LockoutEnd == null || x.LockoutEnd <= DateTimeOffset.UtcNow))
+    return await db.Users.Where(x => x.Id != master && x.IsActive && !x.MustChangePassword && (x.LockoutEnd == null || x.LockoutEnd <= DateTimeOffset.UtcNow))
       .Where(x => db.UserRoles.Any(ur => ur.UserId == x.Id && db.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Player")))
       .Select(x => x.Id).ToArrayAsync();
   }
@@ -155,8 +158,11 @@ public sealed class SchedulingService(IDbContextFactory<ApplicationDbContext> fa
     {
       var settings = JsonSerializer.Deserialize<SchedulingSettings>(r.SettingsJson)!;
       var players = await Players(db, r.MasterId);
-      var masterActive = await db.Users.AnyAsync(x => x.Id == r.MasterId && !x.MustChangePassword && (x.LockoutEnd == null || x.LockoutEnd <= DateTimeOffset.UtcNow)) &&
+      var masterActive = await db.Users.AnyAsync(x => x.Id == r.MasterId && x.IsActive && !x.MustChangePassword && (x.LockoutEnd == null || x.LockoutEnd <= DateTimeOffset.UtcNow)) &&
         await (from ur in db.UserRoles join role in db.Roles on ur.RoleId equals role.Id where ur.UserId == r.MasterId && role.Name == "Admin" select ur).AnyAsync();
+      // Отключённые участники не удерживают раунд и не влияют голосами на результат.
+      var activeVoters = players.Concat(masterActive ? [r.MasterId] : Array.Empty<Guid>()).ToHashSet();
+      r.Voters = r.Voters.Where(activeVoters.Contains).ToArray();
       var requestRules = rules.Where(x => x.UserId != r.MasterId || masterActive).ToList();
       var room = await db.Set<ChatRoom>().SingleAsync(x => x.Id == r.RoomId);
       var card = await db.Set<ChatMessage>().SingleAsync(x => x.Id == r.CardMessageId);
@@ -205,7 +211,7 @@ public sealed class SchedulingService(IDbContextFactory<ApplicationDbContext> fa
       r.OptionsJson = JsonSerializer.Serialize(options);
       if (r.State == "voting")
       {
-        var ballots = await db.Set<SchedulingBallot>().Where(x => x.RequestId == r.Id && x.Round == r.Round).ToListAsync();
+        var ballots = await db.Set<SchedulingBallot>().Where(x => x.RequestId == r.Id && x.Round == r.Round && r.Voters.Contains(x.UserId)).ToListAsync();
         if (r.Voters.All(v => ballots.Any(x => x.UserId == v)))
         {
           var ranked = options.Where(x => x.Eligible).Select(x => new { Window = x, Votes = ballots.Count(b => b.Keys.Contains(x.Key)) }).ToList();

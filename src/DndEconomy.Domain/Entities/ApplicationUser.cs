@@ -11,9 +11,10 @@ public class ApplicationUser : IdentityUser<Guid>
 {
   #region Профиль
 
-  /// <summary>
-  /// Отображаемое имя (имя персонажа/игрока), показывается вместо логина в интерфейсе.
-  /// </summary>
+  /// <summary>Активная учётная запись: отключённые игроки не входят и не участвуют в работе сайта.</summary>
+  public bool IsActive { get; set; } = true;
+
+  /// <summary>Отображаемое имя персонажа или игрока вместо логина в интерфейсе.</summary>
   public string DisplayName { get; set; } = string.Empty;
 
   #endregion

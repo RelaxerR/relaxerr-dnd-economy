@@ -4,7 +4,11 @@ using DndEconomy.Domain.Collaboration;
 namespace DndEconomy.Application.Collaboration;
 
 /// <summary>Отображаемое имя и безопасный CSS-цвет.</summary>
-public sealed record ChatPerson(Guid Id, string Name, string Color);
+public sealed record ChatPerson(Guid Id, string Name, string Color)
+{
+  /// <summary>Можно выбрать адресатом; имя неактивного автора остаётся в истории.</summary>
+  public bool IsActive { get; init; } = true;
+}
 /// <summary>Сообщение со всеми доступными текущему читателю метаданными.</summary>
 public sealed record MessageView(ChatMessage Message, List<Guid> ReadBy, List<ChatAttachment> Attachments,
   ChatPoll? Poll, List<PollOption> Options, List<PollVote> Votes);
@@ -25,6 +29,8 @@ public interface IChatService
   Task<List<ChatMessage>> Search(ClaimsPrincipal user, string query);
   Task<Guid> CreateRoom(ClaimsPrincipal user, string name);
   Task<Guid> Thread(ClaimsPrincipal user, Guid message);
+  /// <summary>Меняет название доступной ветки, не меняя круг читателей.</summary>
+  Task RenameThread(ClaimsPrincipal user, Guid room, string name);
   Task<Guid> Send(ClaimsPrincipal user, Guid room, string text, Guid[] readers, DateTime? confirmedUtc = null, string? zone = null);
   Task Edit(ClaimsPrincipal user, Guid message, string text);
   Task Delete(ClaimsPrincipal user, Guid message);

@@ -1,0 +1,15 @@
+@page "/Account/Inactive"
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+
+<PageTitle>Учётная запись временно не активна — Relaxerr</PageTitle>
+<section class="auth-card">
+  <h1>Учётная запись временно не активна</h1>
+  <p role="alert">Администратор отключил вашу учётную запись. Вход и участие в подборе партий временно недоступны.</p>
+  <p>Чтобы вернуться в кампанию, обратитесь к администратору.</p>
+  <a class="btn" href="/Account/Login">Вернуться ко входу</a>
+</section>
+
+@code {
+  protected override async Task OnInitializedAsync() => await SignInManager.SignOutAsync();
+}

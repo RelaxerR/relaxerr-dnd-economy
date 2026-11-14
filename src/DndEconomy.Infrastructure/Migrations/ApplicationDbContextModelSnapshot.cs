@@ -48,6 +48,9 @@ namespace DndEconomy.Infrastructure.Migrations
                     b.Property<int>("Repeat")
                         .HasColumnType("integer");
 
+                    b.Property<DateOnly?>("RepeatUntil")
+                        .HasColumnType("date");
+
                     b.Property<DateTime?>("StartUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -549,6 +552,11 @@ namespace DndEconomy.Infrastructure.Migrations
 
                     b.Property<Guid?>("InvitedByUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime?>("LastLoginAtUtc")
                         .HasColumnType("timestamp with time zone");
