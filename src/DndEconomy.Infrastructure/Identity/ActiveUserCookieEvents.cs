@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Http;
 
 namespace DndEconomy.Infrastructure.Identity;
 
@@ -8,6 +9,9 @@ namespace DndEconomy.Infrastructure.Identity;
 public sealed class ActiveUserCookieEvents(AccountAccess access) : CookieAuthenticationEvents
 {
   private const string InactiveKey = "DndEconomy.InactiveAccount";
+
+  /// <summary>Показывает причину отзыва и при прямом переходе на анонимную страницу входа.</summary>
+  public static bool WasInactive(HttpContext context) => context.Items.ContainsKey(InactiveKey);
 
   /// <inheritdoc />
   public override async Task ValidatePrincipal(CookieValidatePrincipalContext context)
@@ -26,7 +30,7 @@ public sealed class ActiveUserCookieEvents(AccountAccess access) : CookieAuthent
   /// <inheritdoc />
   public override Task RedirectToLogin(RedirectContext<CookieAuthenticationOptions> context)
   {
-    if (!context.HttpContext.Items.ContainsKey(InactiveKey)) return base.RedirectToLogin(context);
+    if (!WasInactive(context.HttpContext)) return base.RedirectToLogin(context);
     context.Response.Redirect("/Account/Inactive");
     return Task.CompletedTask;
   }

@@ -14,7 +14,7 @@
 @if (!string.IsNullOrEmpty(error)) { <p role="alert" class="status-message">@error</p> }
 @if (preference is not null)
 {
-  <div class="calendar-toolbar">
+  <div class="calendar-toolbar calendar-toolbar--navigation">
     <button class="btn" aria-label="Предыдущая неделя" @onclick="() => MoveWeek(-7)">←</button>
     <button class="btn" @onclick="Today">Сегодня</button>
     <button class="btn" aria-label="Следующая неделя" @onclick="() => MoveWeek(7)">→</button>

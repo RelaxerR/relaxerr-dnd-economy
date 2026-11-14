@@ -928,9 +928,9 @@ body {
   .calendar-heading h1 { font-size: 1.35rem; }
   .calendar-heading p { font-size: .75rem; }
   .calendar-heading > a { padding: 8px; font-size: .8rem; }
-  .calendar-toolbar > .btn--primary, .calendar-toolbar > a { font-size: 0; min-width: 40px; padding: 8px; text-align: center; }
-  .calendar-toolbar > .btn--primary::after { content: '+'; font-size: 1.1rem; }
-  .calendar-toolbar > a::after { content: '⚙'; font-size: 1.1rem; }
+  .calendar-toolbar--navigation > .btn--primary, .calendar-toolbar--navigation > a { font-size: 0; min-width: 40px; padding: 8px; text-align: center; }
+  .calendar-toolbar--navigation > .btn--primary::after { content: '+'; font-size: 1.1rem; }
+  .calendar-toolbar--navigation > a::after { content: '⚙'; font-size: 1.1rem; }
   .calendar-hint { display: none; }
 }
 

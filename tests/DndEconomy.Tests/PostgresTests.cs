@@ -341,7 +341,7 @@ public sealed class PostgresTests
       Assert.Empty(await accounts.SetActiveAsync(users[0].Id, users[2].Id, false, default));
       await inbound(null!); Assert.Equal(1, dispatched); Assert.EndsWith("/Account/Inactive", navigation.Target);
       auth.Principal = new ClaimsPrincipal(new ClaimsIdentity());
-      await inbound(null!); Assert.Equal(1, dispatched);
+      await inbound(null!); Assert.Equal(1, dispatched); Assert.EndsWith("/Account/Inactive", navigation.Target);
       Assert.Equal(AccountSessionState.Inactive, await access.Check(principals[2]));
       await Assert.ThrowsAsync<UnauthorizedAccessException>(() => chat.Send(principals[2], room, "Denied", []));
       await Assert.ThrowsAsync<ArgumentException>(() => chat.Send(principals[0], room, "Do not send publicly", [users[2].Id]));
@@ -363,6 +363,7 @@ public sealed class PostgresTests
           new CookieAuthenticationOptions(), new AuthenticationTicket(principals[2], IdentityConstants.ApplicationScheme));
         await signInScope.ServiceProvider.GetRequiredService<ActiveUserCookieEvents>().ValidatePrincipal(context);
         Assert.Null(context.Principal);
+        Assert.True(ActiveUserCookieEvents.WasInactive(http));
       }
       Assert.Empty(await accounts.SetActiveAsync(users[0].Id, users[2].Id, true, default));
       Assert.Equal(AccountSessionState.Invalid, await access.Check(principals[2]));
