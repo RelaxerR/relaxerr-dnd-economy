@@ -74,6 +74,8 @@ public sealed class NotificationService : INotificationService
   {
     await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
+    if (!await dbContext.Users.AnyAsync(x => x.Id == userId && x.IsActive, cancellationToken)) return;
+
     dbContext.Notifications.Add(new Notification
     {
       UserId = userId,

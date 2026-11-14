@@ -101,7 +101,7 @@ public sealed class ChatPushWorker(IDbContextFactory<ApplicationDbContext> facto
       var delivery = await db.Set<ChatPushDelivery>().FindAsync([n.Id, s.Id], ct);
       if (delivery is null) { delivery = new() { NoticeId = n.Id, SubscriptionId = s.Id }; db.Add(delivery); }
       var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == n.UserId, ct);
-      if (user is null || user.SecurityStamp != s.SecurityStamp || user.MustChangePassword || user.LockoutEnd > DateTimeOffset.UtcNow || !PushService.AllowedEndpoint(s.Endpoint)) { delivery.SentUtc = now; continue; }
+      if (user is null || !user.IsActive || user.SecurityStamp != s.SecurityStamp || user.MustChangePassword || user.LockoutEnd > DateTimeOffset.UtcNow || !PushService.AllowedEndpoint(s.Endpoint)) { delivery.SentUtc = now; continue; }
       var admin = await (from ur in db.UserRoles join r in db.Roles on ur.RoleId equals r.Id where ur.UserId == user.Id && r.Name == "Admin" select ur).AnyAsync(ct);
       var a = new ChatActor(user.Id, admin);
       var pref = await db.Set<ChatPreference>().FindAsync([user.Id], ct) ?? new();

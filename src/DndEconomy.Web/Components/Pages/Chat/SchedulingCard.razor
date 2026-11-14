@@ -14,7 +14,7 @@
   }
   @if (Request.State == "voting")
   {
-    <p>Ответили: @Ballots.Count(x => x.RequestId == Request.Id && x.Round == Request.Round) / @Request.Voters.Length</p>
+    <p>Ответили: @Ballots.Count(x => x.RequestId == Request.Id && x.Round == Request.Round && Request.Voters.Contains(x.UserId)) / @Request.Voters.Length</p>
     <p>Голосуют игроки и мастер; можно выбрать несколько окон. После ответа всех дата назначается автоматически.</p>
     @foreach (var window in Options.Skip(page * 20).Take(20))
     {

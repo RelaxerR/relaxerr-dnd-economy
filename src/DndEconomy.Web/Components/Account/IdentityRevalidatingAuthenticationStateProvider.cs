@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace DndEconomy.Web.Components.Account;
 
 /// <summary>
-/// Server-side AuthenticationStateProvider, который раз в 30 минут для каждого активного
+/// Server-side AuthenticationStateProvider, который раз в 30 секунд для каждого активного
 /// circuit'а перепроверяет security stamp пользователя — если пароль сменили или сессию
 /// отозвали на другом устройстве, текущий circuit не останется залогинен неограниченно долго.
 /// </summary>
@@ -18,7 +18,7 @@ internal sealed class IdentityRevalidatingAuthenticationStateProvider(
     IOptions<IdentityOptions> options)
   : RevalidatingServerAuthenticationStateProvider(loggerFactory)
 {
-  protected override TimeSpan RevalidationInterval => TimeSpan.FromMinutes(30);
+  protected override TimeSpan RevalidationInterval => TimeSpan.FromSeconds(30);
 
   protected override async Task<bool> ValidateAuthenticationStateAsync(
     AuthenticationState authenticationState, CancellationToken cancellationToken)
@@ -31,7 +31,7 @@ internal sealed class IdentityRevalidatingAuthenticationStateProvider(
   private async Task<bool> ValidateSecurityStampAsync(UserManager<ApplicationUser> userManager, ClaimsPrincipal principal)
   {
     var user = await userManager.GetUserAsync(principal);
-    if (user is null)
+    if (user is null || !user.IsActive)
       return false;
 
     if (!userManager.SupportsUserSecurityStamp)

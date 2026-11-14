@@ -49,6 +49,10 @@
     @if (snapshot is not null)
     {
       <header class="chat-conversation-header"><button class="btn chat-mobile-toggle" @onclick="() => showList = true">← Назад</button><div><h2>@snapshot.CurrentRoom.Name</h2><small>@(snapshot.CurrentRoom.Readers.Length > 0 ? "Личная ветка · доступна также администраторам" : "Чат кампании")</small></div></header>
+      @if (snapshot.CurrentRoom.IsThread)
+      {
+        <details class="chat-thread-title"><summary>Название ветки</summary><label>Название<input @bind="threadName" maxlength="200" /></label><button class="btn" @onclick="RenameThread">Сохранить название</button></details>
+      }
       <div id="chat-history" class="chat-history" tabindex="0" aria-label="История сообщений">
       @if (snapshot.Pinned.Count > 0)
       {
@@ -114,9 +118,9 @@
       <label>Сообщение<textarea value="@draft" @oninput="DraftChanged" maxlength="12000" rows="3"></textarea></label>
       <details><summary>Кому@(recipients.Count == 0 ? "" : $": {Names(recipients)}")</summary>
         <p>Личные сообщения доступны также администраторам. Ветка сохраняет прежний круг читателей.</p>
-        @foreach (var p in snapshot.People.Where(x => x.Id != userId && (snapshot.CurrentRoom.Readers is not { Length: > 0 } audience || audience.Contains(x.Id))))
+        @foreach (var p in snapshot.People.Where(x => (x.IsActive || recipients.Contains(x.Id)) && x.Id != userId && (snapshot.CurrentRoom.Readers is not { Length: > 0 } audience || audience.Contains(x.Id))))
         {
-          <label><input type="checkbox" checked="@recipients.Contains(p.Id)" @onchange="e => Recipient(p.Id, (bool)e.Value!)" /> @p.Name</label>
+          <label><input type="checkbox" checked="@recipients.Contains(p.Id)" @onchange="e => Recipient(p.Id, (bool)e.Value!)" /> @p.Name@(!p.IsActive ? " (временно не активен)" : "")</label>
         }
       </details>
       <label class="chat-attachment" title="Прикрепить файл">📎<span class="sr-only">Вложение к сообщению</span><InputFile OnChange="e => pendingFile = e.File" /></label>
@@ -156,6 +160,7 @@
   private bool showList = true;
   private bool admin, archive, busy, confirmTime, multiple;
   private string? error;
+  private string threadName = "";
   private string draft = "", newRoom = "", search = "", question = "", pollOptions = "";
   private DateTime pollEnd = DateTime.Today.AddDays(1).AddHours(20);
   private ChatPreference preference = new();
@@ -242,6 +247,7 @@
       else if (snapshot.Messages.LastOrDefault() is { } latest)
         newMessages += result.Messages.Count(x => x.Message.CreatedUtc > latest.Message.CreatedUtc && x.Message.AuthorId != userId);
     }
+    if (snapshot?.CurrentRoom.Id != result.CurrentRoom.Id) threadName = result.CurrentRoom.Name;
     snapshot = result;
     restoreHistory = true;
     if (!interactive || showList && await JS.InvokeAsync<bool>("chatUi.mobile") || !await JS.InvokeAsync<bool>("chatUi.visible")) return;
@@ -260,6 +266,7 @@
   private Task Older() => Run(async () => { take += 50; await Refresh(); });
   private Task CreateRoom() => Run(async () => { room = await Chat.CreateRoom(user, newRoom); newRoom = ""; showList = false; await Refresh(); pendingScroll = "chat-bottom"; });
   private Task Find() => Run(async () => hits = await Chat.Search(user, search));
+  private Task RenameThread() => Run(async () => { await Chat.RenameThread(user, room, threadName); await Refresh(); });
   private Task StartThread(Guid id) => Run(async () => { showList = false; room = await Chat.Thread(user, id); take = 50; CancelEdit(); recipients.Clear(); pendingFile = null; await Refresh(); pendingScroll = "chat-bottom"; });
   private void BeginEdit(ChatMessage m) { editing = m.Id; draft = m.Text; confirmTime = false; }
   private void CancelEdit() { editing = null; draft = ""; confirmTime = false; }
