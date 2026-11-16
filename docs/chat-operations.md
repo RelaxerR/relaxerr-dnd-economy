@@ -30,6 +30,24 @@ dotnet ef migrations script --idempotent \
 
 `Chat__StoragePath` — абсолютный путь к приватному каталогу, доступному процессу для записи. По умолчанию `private-chat-files` относительно рабочего каталога. В compose уже задан `/data/chat-files` и постоянный volume `chatfiles`. Не размещайте его в `wwwroot`, не добавляйте nginx alias и публичные правила CDN. Backup должен включать БД и этот volume. `docker compose down -v` уничтожит данные, поэтому для обычного перезапуска используйте `restart` или `up -d`.
 
+Dockerfile создаёт `/data/chat-files` с владельцем `app` (UID 1654) до перехода на непривилегированного
+пользователя. Новый named volume наследует эти права. **Существующий** volume с владельцем root
+при обновлении образа не исправляется автоматически. Проверить:
+
+```sh
+docker compose -f docker-compose.prod.yml exec -T web sh -c 'test -w /data/chat-files && echo "Chat storage writable"'
+```
+
+Если каталог не доступен, после backup выполнить одноразово для этого volume:
+
+```sh
+docker compose -f docker-compose.prod.yml exec -T --user 0 web sh -c 'chown app:app /data/chat-files'
+```
+
+Не менять права всего `/data` и не переключать рабочее приложение на root.
+Воспроизводимый изолированный Docker/nginx-стенд и точные границы проверок:
+[tests/production-like/README.md](../tests/production-like/README.md). CI запускает его отдельным job.
+
 Файлы передаются через поток `InputFile` маленькими сообщениями существующего Blazor circuit; 100 МБ не буферизуются в памяти сервера и не отправляются одним multipart POST. Сервер считает фактически прочитанные байты, разрешает 100 000 000 и отклоняет следующий байт. Скачивание — только `/chat-files/<guid>`, `attachment`, `application/octet-stream`, `nosniff`, `private, no-store`, без range-кэширования.
 
 В существующем HTTPS server-блоке nginx сохраните поддержку WebSocket. Пример параметров location приложения (это образец для проверки в staging, не выполненный продакшен-деплой):
@@ -56,24 +74,98 @@ location / {
 
 ## Web Push
 
-Один раз сгенерируйте VAPID-пару на доверенной машине:
+Production использует существующий `.env` рядом с `/opt/relaxerr-dnd-economy/docker-compose.prod.yml`.
+GitHub Secrets содержат только параметры SSH-деплоя; VAPID туда дублировать не нужно.
+Compose уже отображает `WEB_PUSH_*` в `WebPush__*` для контейнера `web`.
+Приватный ключ никогда не передаётся браузеру: `IPushService.PublicKey` возвращает только
+публичную часть, и только если вся конфигурация валидна.
 
-```sh
-dotnet run --project tools/DndEconomy.Vapid
-```
+| Переменная в серверном `.env` | Конфигурация приложения | Назначение |
+|---|---|---|
+| `WEB_PUSH_SUBJECT` | `WebPush:Subject` | Реальный `mailto:`-контакт владельца либо HTTPS-адрес сайта |
+| `WEB_PUSH_PUBLIC_KEY` | `WebPush:PublicKey` | Публичный ключ P-256 для браузера |
+| `WEB_PUSH_PRIVATE_KEY` | `WebPush:PrivateKey` | Секрет P-256, только на сервере |
 
-Сохраните значения в локальном секретном `.env` окружения; не коммитьте и не публикуйте вывод. Compose передаёт:
+### Первичная настройка production
 
-| Переменная | Назначение |
-|---|---|
-| `WEB_PUSH_SUBJECT` | Контакт владельца, например `mailto:admin@example.com` |
-| `WEB_PUSH_PUBLIC_KEY` | Публичный ключ для браузера |
-| `WEB_PUSH_PRIVATE_KEY` | Секрет VAPID, только сервер |
-| `Chat__StoragePath` | Приватный каталог файлов при запуске вне compose |
+1. Сначала дождитесь слияния исправлений в `main`, зелёного CI и штатного Deploy.
+   Доступ: `deploy@77.110.104.211`, порт 22, авторизация существующим SSH-ключом.
+   Не передавайте приватный SSH-ключ или `.env` в чат. Проверить канал до деплоя:
+   `nc -vz -w 5 77.110.104.211 22`, затем
+   `ssh -o BatchMode=yes -o ConnectTimeout=10 deploy@77.110.104.211 true`.
+   Успех TCP недостаточен: таймаут banner exchange происходит ещё до проверки ключа.
+   Если SSH не получает приветствие, через консоль провайдера проверить `systemctl status ssh`,
+   `ss -ltnp`, `ufw status`, правила провайдера/fail2ban и журнал `journalctl -u ssh`.
+   Не открывать лишние порты и не менять firewall вслепую.
+2. На сервере проверьте **только наличие** трёх переменных, не их значения. Например:
 
-В секции конфигурации приложения это `WebPush:Subject`, `WebPush:PublicKey`, `WebPush:PrivateKey`. Без ключей чат и уведомления на сайте работают; подключение push показывает, что оно ещё не настроено. При замене пары устройства нужно переподписать.
+   ```sh
+   cd /opt/relaxerr-dnd-economy
+   python3 - <<'PY_CHECK'
+   from pathlib import Path
+   names = ('WEB_PUSH_SUBJECT', 'WEB_PUSH_PUBLIC_KEY', 'WEB_PUSH_PRIVATE_KEY')
+   rows = [line.partition('=') for line in Path('.env').read_text().splitlines()]
+   for name in names:
+       values = [value.strip().strip("\"'") for key, sep, value in rows if sep and key.strip() == name]
+       print(name + ': ' + ('SET' if len(values) == 1 and values[0] else 'MISSING_OR_DUPLICATE'))
+   PY_CHECK
+   ```
 
-На Android: войти, открыть «Цвет имени и уведомления», выбрать типы событий, сохранить, нажать подключение и разрешить уведомления. На iPhone: открыть HTTPS-сайт, «Поделиться» → «На экран Домой», запустить с домашнего экрана и затем подключить push. Требование установки и непосредственного пользовательского нажатия описано [WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/). Обработка протокола использует [WebPush для .NET](https://github.com/web-push-libs/web-push-csharp).
+   Если рабочая пара уже существует, **не генерировать новую**: сначала проверить передачу
+   Compose, контакт и диагностику в `/chat-settings`. Частичную конфигурацию восстановить из
+   секретного backup, если он есть. Смена пары требует переподписки всех устройств.
+3. Только если пары ещё нет, на доверенной машине с .NET 10 и актуальным checkout выполните:
+
+   ```sh
+   dotnet run --project tools/DndEconomy.Vapid -- \
+     --output /private/path/web-push.env \
+     --subject https://relaxerr-dnd-economy.ru
+   ```
+
+   Каталог должен существовать и быть приватным. Можно заменить HTTPS subject реальным
+   `mailto:`-контактом. Генератор создаёт **новый** файл `0600`, не печатает ключи и отказывается
+   перезаписывать существующий файл. На Windows ограничьте ACL владельцем. Это не команда для CI.
+   Передайте файл на сервер по защищённому SSH/SCP-каналу, сохранив права `0600`.
+4. На сервере локальным редактором перенесите три значения в существующий `.env`, удалив пустые
+   дубли этих же имён. Остальные настройки не заменять. `chmod 600 .env`.
+   Не выводить `cat .env`, `docker inspect`, `docker compose config` или `printenv` в общий лог.
+   Секретный файл генератора убрать из рабочего каталога после переноса и сохранить защищённый backup пары.
+5. Применить **изменение окружения**, а не только restart:
+
+   ```sh
+   docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate web
+   docker compose -f docker-compose.prod.yml exec -T web sh -c '
+     test -n "$WebPush__Subject" && test -n "$WebPush__PublicKey" && test -n "$WebPush__PrivateKey" && echo "VAPID variables present"
+   '
+   ```
+
+   Эта проверка не печатает значений. Приложение дополнительно проверяет формат и соответствие
+   ключей, а также subject. В `/chat-settings` должна появиться кнопка подключения вместо ошибки.
+   При отсутствии конфигурации страница теперь перечисляет **имена** недостающих параметров;
+   при повреждённой паре объясняет ошибку без секретных значений. Worker не отправляет очередь
+   с невалидной конфигурацией и пишет только безопасную диагностику.
+6. Проверить HTTPS, вход, service worker, подписку и реальную доставку по списку ниже.
+   Записать дату, версию приложения, результаты и остаток приёмки в `docs/chat-acceptance.md`.
+   Наличие ключей само по себе не подтверждает доставку.
+
+### Проверка после настройки
+
+- Анонимный `curl -I https://relaxerr-dnd-economy.ru/chat-sw.js`: 200, JavaScript,
+  `Cache-Control: no-cache`; scope — корень. Worker не кэширует страницы или вложения.
+- В DevTools → Application → Service Workers: `/chat-sw.js` активен. Сохранить типы событий,
+  затем нажать подключение. Permission запрашивается непосредственно нажатием пользователя;
+  отказ не должен создавать подписку. После разрешения — сообщение «Push подключён».
+- С другого аккаунта проверить message/private/thread/mention/poll/request/assigned/cancelled,
+  закрыв/свернув принимающую вкладку, затем оба reminder. На блокировке — общий тип события,
+  без текста и имён; нажатие открывает нужный чат, где заново проверяется Identity и доступ.
+- Убедиться, что серверная подписка появилась (считать строки, не выгружать endpoint/ключи).
+  Уведомление открывает `/chat?message=...` либо `/chat?room=...`. Авторизация остаётся обычной.
+- Настоящий 410 не имитировать путём отправки на чужой URL: удаление после 410, отказ чужому
+  аккаунту и неподдерживаемым схемам проверены изолированным автотестом.
+- Android Chrome и установленный на домашний экран iPhone проверять физически: подписка,
+  отказ/повторное разрешение, фон/блокировка, переход, отключение. Desktop/mocks их не заменяют.
+
+На Android: войти, открыть «Настройки и уведомления», выбрать типы событий, сохранить, нажать подключение и разрешить уведомления. На iPhone: открыть HTTPS-сайт, «Поделиться» → «На экран Домой», запустить с домашнего экрана и затем подключить push. Требование установки и непосредственного пользовательского нажатия описано [WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/). Обработка протокола использует [WebPush для .NET](https://github.com/web-push-libs/web-push-csharp).
 
 Исходящий HTTPS разрешается к `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `*.push.apple.com`, `*.notify.windows.com`; endpoint других доменов отклоняется для защиты от SSRF. Endpoint и ключи подписок — приватные данные БД, не включайте их в логи. Настройки событий общие для уведомлений сайта и push. Право администратора читать личные сообщения не подписывает его на их уведомления.
 

@@ -1,0 +1,44 @@
+name: relaxerr-chat-acceptance
+services:
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: relaxerr_acceptance
+      POSTGRES_USER: acceptance
+      POSTGRES_PASSWORD: disposable-local-only
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U acceptance -d relaxerr_acceptance]
+      interval: 2s
+      retries: 30
+  web:
+    image: relaxerr-chat-acceptance
+    build:
+      context: ../..
+      dockerfile: src/DndEconomy.Web/Dockerfile
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=db;Database=relaxerr_acceptance;Username=acceptance;Password=disposable-local-only
+      Chat__StoragePath: /data/chat-files
+      DND_ACCEPTANCE_FIXTURE: '1'
+      WebPush__Subject: ${WEB_PUSH_SUBJECT:-}
+      WebPush__PublicKey: ${WEB_PUSH_PUBLIC_KEY:-}
+      WebPush__PrivateKey: ${WEB_PUSH_PRIVATE_KEY:-}
+      MacroApi__PlayerKey: local-acceptance-player
+      MacroApi__AdminKey: local-acceptance-admin
+    volumes: [chatfiles:/data/chat-files]
+  nginx:
+    image: nginx:1.24
+    depends_on: [web]
+    ports: ['127.0.0.1:5291:80']
+    volumes: ['./nginx.conf:/etc/nginx/conf.d/default.conf:ro']
+  nginx-peer:
+    image: nginx:1.24
+    depends_on: [web]
+    ports: ['127.0.0.1:5292:80']
+    volumes: ['./nginx.conf:/etc/nginx/conf.d/default.conf:ro']
+volumes:
+  pgdata:
+  chatfiles:
