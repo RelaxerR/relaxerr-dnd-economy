@@ -9,6 +9,8 @@ public interface ISchedulingService
   Task<List<AvailabilityRule>> Calendar(ClaimsPrincipal user);
   Task SaveRule(ClaimsPrincipal user, AvailabilityRule rule);
   Task DeleteRule(ClaimsPrincipal user, Guid rule);
+  /// <summary>Атомарно удаляет только явно выбранные собственные окна, сохраняя остальные исключения.</summary>
+  Task DeleteRules(ClaimsPrincipal user, Guid[] rules);
   Task<List<SessionWindow>> Preview(ClaimsPrincipal user, string zone, SchedulingSettings settings);
   Task<Guid> Request(ClaimsPrincipal user, Guid room, string zone, SchedulingSettings settings);
   Task Ballot(ClaimsPrincipal user, Guid request, int round, string[] keys);

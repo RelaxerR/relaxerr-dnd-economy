@@ -8,6 +8,7 @@
 @inject IChatService Chat
 @inject IJSRuntime JS
 @inject AuthenticationStateProvider Auth
+@inject NavigationManager Navigation
 
 <PageTitle>Календарь — Relaxerr</PageTitle>
 <div class="calendar-heading"><div><h1>Мой календарь</h1><p>Ваша доступность · @(preference?.Zone)</p></div><a class="btn" href="/chat">← В чат</a></div>
@@ -20,6 +21,7 @@
     <button class="btn" aria-label="Следующая неделя" @onclick="() => MoveWeek(7)">→</button>
     <strong>@week.ToString("dd MMM", Russian) — @week.AddDays(6).ToString("dd MMM yyyy", Russian)</strong>
     <button class="btn btn--primary" aria-label="Добавить окно" @onclick="() => OpenSlot(selectedDay.AddHours(19))">+ Окно</button>
+    <a class="btn calendar-recurring-link" href="@(Navigation.Uri.Split('#')[0] + "#recurring-windows")">Повторяющиеся окна (@rules.Count(x => x.Repeat != RepeatKind.Once))</a>
     <a class="btn" href="/chat-settings" aria-label="Часовой пояс">Часовой пояс</a>
   </div>
   @if (FromQuery is not null) { <p class="calendar-request">Период запроса: @from.ToString("dd.MM.yyyy") — @until.AddDays(-1).ToString("dd.MM.yyyy")</p> }
@@ -60,12 +62,13 @@
       }
     </div>
   </div>
+  <RecurringWindows @ref="recurringWindows" Rules="rules" OnEdit="OpenSeries" OnDelete="DeleteSelected" />
   @if (editorOpen)
   {
     <dialog id="calendar-editor" class="calendar-dialog auth-card calendar-editor" role="dialog" aria-modal="true" aria-labelledby="calendar-editor-title" @onkeydown="EditorKey">
       <header><h2 id="calendar-editor-title">@(sourceRule is null ? "Новое окно" : "Изменить окно")</h2><button class="btn" @onclick="() => editorOpen = false" aria-label="Закрыть редактор">✕</button></header>
       @if (!string.IsNullOrEmpty(error)) { <p role="alert">@error</p> }
-      @if (sourceRule is { Repeat: not RepeatKind.Once })
+      @if (sourceRule is { Repeat: not RepeatKind.Once } && occurrence is not null)
       {
         <p>Повторяющееся окно</p><div class="calendar-toolbar"><button class="btn @(!editSeries ? "btn--primary" : "")" @onclick="EditOccurrence">Только это окно</button><button class="btn @(editSeries ? "btn--primary" : "")" @onclick="EditSeries">Вся серия</button></div>
       }
@@ -95,7 +98,7 @@
           @if (rule.Repeat == RepeatKind.Monthly) { <label>Числа месяца, через запятую<input @bind="days" placeholder="1,15,31" /></label> }
         </details>
       }
-      <div class="calendar-toolbar"><button class="btn btn--primary" @onclick="Save">Сохранить окно</button><button class="btn" @onclick="() => editorOpen = false">Отмена</button>
+      <div class="calendar-toolbar"><button class="btn btn--primary" disabled="@saving" @onclick="Save">Сохранить окно</button><button class="btn" @onclick="() => editorOpen = false">Отмена</button>
         @if (sourceRule is not null && (sourceRule.Repeat == RepeatKind.Once || editSeries)) { <button class="btn" @onclick="() => Delete(sourceRule.Id)">Удалить @(editSeries ? "серию" : "окно")</button> }
       </div>
     </dialog>
@@ -122,8 +125,9 @@
   private static readonly System.Globalization.CultureInfo Russian = System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
   private DateTime week, selectedDay;
   private (DateTime? From, DateTime? Until) lastQuery;
-  private bool editorOpen, editSeries, scrollCalendar;
+  private bool editorOpen, editSeries, scrollCalendar, saving;
   private AvailabilityRule? sourceRule;
+  private RecurringWindows? recurringWindows;
   private AvailabilitySlice? occurrence;
   private List<AvailabilitySlice> slices = [];
   private ClaimsPrincipal user = new();
@@ -191,7 +195,8 @@
   }
   private string BlockTime(AvailabilitySlice b, DateTime day) => $"{(LocalDate(b.StartUtc) < day ? "00:00" : LocalDate(b.StartUtc).ToString("HH:mm"))}–{(LocalDate(b.EndUtc) >= day.AddDays(1) ? "24:00" : LocalDate(b.EndUtc).ToString("HH:mm"))}";
   private string BlockLabel(AvailabilitySlice b) => $"{Local(b.StartUtc)} — {Local(b.EndUtc)} · {Label(b.Status)} · {Format(b.Format)}";
-  private void OpenSlot(DateTime time) { error = ""; selectedDay = time.Date; sourceRule = null; editSeries = false; rule = new() { Zone = preference!.Zone, LocalStart = time, LocalEnd = time.AddHours(1) }; days = ""; LoadEditor(); editorOpen = true; }
+  private void OpenSeries(AvailabilityRule r) { error = ""; occurrence = null; sourceRule = r; EditSeries(); editorOpen = true; }
+  private void OpenSlot(DateTime time) { occurrence = null; error = ""; selectedDay = time.Date; sourceRule = null; editSeries = false; rule = new() { Zone = preference!.Zone, LocalStart = time, LocalEnd = time.AddHours(1) }; days = ""; LoadEditor(); editorOpen = true; }
   private void OpenBlock(AvailabilitySlice block, DateTime day) { error = ""; sourceRule = rules.Single(x => x.Id == block.RuleId); occurrence = block; selectedDay = day; EditOccurrence(); editorOpen = true; }
   private void EditOccurrence()
   {
@@ -219,8 +224,27 @@
   }
   private void ToggleDay(int day) => rule.Days = rule.Days.Contains(day) ? rule.Days.Where(x => x != day).ToArray() : [..rule.Days, day];
   private void EditorKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e) { if (e.Key == "Escape") editorOpen = false; }
-  private Task Save() => Run(async () => { ApplyEditor(); if (rule.Repeat == RepeatKind.Monthly) rule.Days = days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToArray(); await Scheduling.SaveRule(user, rule); await Reload(); });
-  private Task Delete(Guid id) => Run(async () => { await Scheduling.DeleteRule(user, id); await Reload(); });
+  private async Task Save()
+  {
+    if (saving) return;
+    saving = true;
+    try
+    {
+      await Run(async () =>
+      {
+        ApplyEditor();
+        if (rule.Repeat == RepeatKind.Monthly) rule.Days = days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToArray();
+        await Scheduling.SaveRule(user, rule); await Reload();
+      });
+    }
+    finally { saving = false; }
+  }
+  private void Delete(Guid id)
+  {
+    editorOpen = false;
+    recurringWindows!.RequestDelete(rules.Single(x => x.Id == id));
+  }
+  private Task DeleteSelected(Guid[] ids) => Run(async () => { await Scheduling.DeleteRules(user, ids); await Reload(); });
   private async Task Reload() { rules = await Scheduling.Calendar(user); editorOpen = false; Expand(); await Coverage(); }
   private Task AllDay(AvailabilityStatus status) => Run(async () => { await Scheduling.SaveRule(user, new() { LocalStart = selectedDay.Date, LocalEnd = selectedDay.Date.AddDays(1), Zone = preference!.Zone, Status = status, Format = PlayFormat.Both }); await Reload(); });
   private Task Coverage() => Run(() =>

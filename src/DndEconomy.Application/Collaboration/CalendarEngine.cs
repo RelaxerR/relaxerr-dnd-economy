@@ -47,7 +47,12 @@ public static class CalendarEngine
             raw.Add((rule, rule.StartUtc!.Value, rule.EndUtc!.Value));
           continue;
         }
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(rule.Zone);
+        // Повреждённая/устаревшая серия не должна закрывать доступ к остальному календарю
+        // и мешать удалению исходного правила из списка. Валидные правила не меняются.
+        if (!Enum.IsDefined(rule.Repeat)) continue;
+        TimeZoneInfo tz;
+        try { tz = TimeZoneInfo.FindSystemTimeZoneById(rule.Zone); }
+        catch (Exception e) when (e is TimeZoneNotFoundException or InvalidTimeZoneException or ArgumentException) { continue; }
         var first = TimeZoneInfo.ConvertTimeFromUtc(from, tz).Date.AddDays(-1);
         var last = TimeZoneInfo.ConvertTimeFromUtc(until, tz).Date;
         for (var date = first; date <= last; date = date.AddDays(1))

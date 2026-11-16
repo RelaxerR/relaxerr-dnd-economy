@@ -156,6 +156,17 @@ public sealed class CalendarTests
   }
 
   [Fact]
+  public void MalformedPersistedSeriesDoesNotPreventCalendarOrDeletionRecalculation()
+  {
+    var valid = new AvailabilityRule { UserId = Master, Repeat = RepeatKind.Daily, Zone = "UTC",
+      LocalStart = Start.Date, LocalEnd = Start.Date.AddHours(1) };
+    var badZone = new AvailabilityRule { UserId = Master, Repeat = RepeatKind.Daily, Zone = "Unknown/Zone" };
+    var badKind = new AvailabilityRule { UserId = Master, Repeat = (RepeatKind)99, Zone = "UTC" };
+    var expected = CalendarEngine.Expand([valid], Start.Date, Start.Date.AddDays(1));
+    Assert.Equal(expected, CalendarEngine.Expand([badZone, badKind, valid], Start.Date, Start.Date.AddDays(1)));
+  }
+
+  [Fact]
   public void ThreadNamesUseDistinctCompactMessagePreview()
   {
     Assert.Equal("Ветка: Поход в таверну", ChatThreadNames.FromMessage("Поход\n  в таверну"));
