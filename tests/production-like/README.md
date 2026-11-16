@@ -4,6 +4,9 @@
 PostgreSQL 16, nginx 1.24, непривилегированного пользователя и именованные volumes.
 Опубликованы только loopback-порты 5291/5292. Это HTTP-стенд с `X-Forwarded-Proto: https`,
 а не проверка TLS/CDN или конфигурации рабочего nginx.
+HTTP-клиент стенда переводит абсолютные HTTPS-редиректы Identity только для
+`localhost:5291` обратно на HTTP-вход стенда. Имена хостов не меняются,
+проверка сертификатов не отключается. Это учитывает различия формата редиректа runtime.
 
 ```sh
 docker compose -f tests/production-like/docker-compose.yml up -d --build

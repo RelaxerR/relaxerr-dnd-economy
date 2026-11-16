@@ -22,11 +22,21 @@ class Inputs(HTMLParser):
         if tag == 'input' and attrs.get('type') == 'hidden' and attrs.get('name'):
             self.hidden[attrs['name']] = attrs.get('value', '')
 
+class LoopbackRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        target = urllib.parse.urlsplit(new_url)
+        # Identity can generate absolute HTTPS redirects because this test proxy
+        # simulates TLS termination. Map only its fixed loopback origin back to
+        # the HTTP test entry; never disable certificate checks or rewrite hosts.
+        if target.scheme == 'https' and target.hostname == 'localhost' and target.port == 5291:
+            new_url = urllib.parse.urlunsplit(target._replace(scheme='http'))
+        return super().redirect_request(request, response, code, message, headers, new_url)
+
 def login(index):
     # The isolated proxy marks requests HTTPS as production does. Only this
     # fixed loopback test client allows Secure cookies on its HTTP test entry.
     jar = http.cookiejar.CookieJar(http.cookiejar.DefaultCookiePolicy(secure_protocols=('https', 'http')))
-    client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    client = urllib.request.build_opener(LoopbackRedirects(), urllib.request.HTTPCookieProcessor(jar))
     url = BASE + '/Account/Login?ReturnUrl=%2Fchat'
     parser = Inputs()
     parser.feed(client.open(url).read().decode())
