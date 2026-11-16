@@ -954,3 +954,19 @@ body {
 }
 .chat-conversation-header > div { min-width: 0; }
 .chat-sidebar > .btn { overflow-wrap: anywhere; }
+
+/* Исходные правила доступны независимо от недельной сетки. */
+.recurring-windows { scroll-margin-top: 80px; }
+.recurring-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.recurring-card { min-width: 0; border: 1px solid #ded8ce; border-radius: 10px; padding: 14px; margin: 8px 0; overflow-wrap: anywhere; }
+.recurring-card h3 { margin-top: 0; font-size: 1.05rem; }
+.recurring-card dl { margin: 0; }
+.recurring-card dt { font-weight: 600; margin-top: 8px; }
+.recurring-card dd { margin: 0; }
+.recurring-windows .calendar-toolbar, #calendar-rule-delete .calendar-toolbar { flex-wrap: wrap; }
+#calendar-rule-delete .calendar-checkbox { align-items: flex-start; overflow-wrap: anywhere; }
+#calendar-rule-delete input { flex: 0 0 auto; }
+@media (max-width: 700px) {
+  .calendar-toolbar--navigation > .calendar-recurring-link { font-size: .85rem; flex-basis: 100%; text-align: left; }
+  .calendar-toolbar--navigation > .calendar-recurring-link::after { content: none; }
+}

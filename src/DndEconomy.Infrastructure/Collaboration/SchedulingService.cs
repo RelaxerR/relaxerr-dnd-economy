@@ -60,10 +60,16 @@ public sealed class SchedulingService(IDbContextFactory<ApplicationDbContext> fa
   });
 
   /// <inheritdoc />
-  public Task DeleteRule(ClaimsPrincipal user, Guid rule) => Write(user, async (db, a) =>
+  public Task DeleteRule(ClaimsPrincipal user, Guid rule) => DeleteRules(user, [rule]);
+
+  /// <inheritdoc />
+  public Task DeleteRules(ClaimsPrincipal user, Guid[] rules) => Write(user, async (db, a) =>
   {
-    var r = await db.Set<AvailabilityRule>().SingleOrDefaultAsync(x => x.Id == rule && x.UserId == a.Id) ?? throw new UnauthorizedAccessException();
-    db.Remove(r); await db.SaveChangesAsync(); await Recalculate(db, Now); return true;
+    var ids = rules.Distinct().ToArray();
+    if (ids.Length == 0) throw new ArgumentException("Выберите окна для удаления.");
+    var owned = await db.Set<AvailabilityRule>().Where(x => ids.Contains(x.Id) && x.UserId == a.Id).ToListAsync();
+    if (owned.Count != ids.Length) throw new UnauthorizedAccessException();
+    db.RemoveRange(owned); await db.SaveChangesAsync(); await Recalculate(db, Now); return true;
   });
 
   private (DateTime Start, DateTime End) Period(string zone, SchedulingSettings s)

@@ -392,6 +392,87 @@ public sealed class PostgresTests
     protected override void NavigateToCore(string uri, bool forceLoad) => Target = uri;
   }
 
+  [PostgresFact]
+  public async Task RecurringRulesCanBeFoundUpdatedAndDeletedWithoutLosingIndependentExceptions()
+  {
+    var name = "relaxerr_repeats_test_" + Guid.NewGuid().ToString("N");
+    var connection = Environment.GetEnvironmentVariable("DND_TEST_POSTGRES")!;
+    await using var admin = new NpgsqlConnection(connection); await admin.OpenAsync();
+    await using (var create = new NpgsqlCommand($"CREATE DATABASE {name}", admin)) await create.ExecuteNonQueryAsync();
+    var factory = new TestFactory(new NpgsqlConnectionStringBuilder(connection) { Database = name }.ConnectionString);
+    try
+    {
+      var owner = new ApplicationUser { UserName = "owner@test.invalid", MustChangePassword = false, SecurityStamp = Guid.NewGuid().ToString() };
+      var other = new ApplicationUser { UserName = "other@test.invalid", MustChangePassword = false, SecurityStamp = Guid.NewGuid().ToString() };
+      var master = new ApplicationUser { UserName = "master@test.invalid", MustChangePassword = false, SecurityStamp = Guid.NewGuid().ToString() };
+      await using (var db = factory.CreateDbContext())
+      {
+        await db.Database.MigrateAsync(); db.AddRange(owner, other, master);
+        var role = new IdentityRole<Guid> { Name = "Admin", NormalizedName = "ADMIN" }; db.Add(role);
+        db.UserRoles.Add(new() { UserId = master.Id, RoleId = role.Id }); await db.SaveChangesAsync();
+      }
+      ClaimsPrincipal Principal(ApplicationUser u) => new(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, u.Id.ToString()),
+        new Claim("AspNet.Identity.SecurityStamp", u.SecurityStamp!) }, "test"));
+      var user = Principal(owner);
+      var service = new SchedulingService(factory, TimeProvider.System);
+      var start = new DateTime(2026, 12, 1, 23, 0, 0);
+      var exception = new AvailabilityRule { Zone = "UTC", LocalStart = start.AddHours(1), LocalEnd = start.AddHours(2),
+        Status = AvailabilityStatus.Unavailable, Format = PlayFormat.Online };
+      var secondException = new AvailabilityRule { Zone = "UTC", LocalStart = start.AddDays(8), LocalEnd = start.AddDays(8).AddHours(1) };
+      await service.SaveRule(user, exception); await service.SaveRule(user, secondException);
+      foreach (var kind in new[] { RepeatKind.Daily, RepeatKind.Weekly, RepeatKind.Monthly })
+      foreach (var bounded in new[] { false, true })
+      {
+        var rule = new AvailabilityRule { Zone = "UTC", Repeat = kind, Days = kind == RepeatKind.Monthly ? [1, 31] : [2],
+          LocalStart = start, LocalEnd = start.AddHours(3), RepeatUntil = bounded ? new(2026, 12, 31) : null };
+        await service.SaveRule(user, rule);
+        rule = (await service.Calendar(user)).Single(x => x.Id == rule.Id);
+        rule.LocalStart = start.AddMinutes(-30); rule.LocalEnd = start.AddHours(4);
+        rule.Status = AvailabilityStatus.PreferOther; rule.Format = PlayFormat.Both;
+        await service.SaveRule(user, rule); await service.SaveRule(user, rule);
+        var loaded = await service.Calendar(user);
+        Assert.Equal(3, loaded.Count); Assert.Single(loaded, x => x.Id == rule.Id);
+        var saved = loaded.Single(x => x.Id == rule.Id);
+        Assert.Equal(rule.LocalStart, saved.LocalStart); Assert.Equal(rule.LocalEnd, saved.LocalEnd);
+        Assert.Equal(rule.Status, saved.Status); Assert.Equal(rule.RepeatUntil, saved.RepeatUntil);
+        var slices = CalendarEngine.Expand(loaded, DateTime.SpecifyKind(start, DateTimeKind.Utc), DateTime.SpecifyKind(start.AddHours(6), DateTimeKind.Utc));
+        Assert.Contains(slices, x => x.RuleId == exception.Id && x.Format == PlayFormat.Online && x.Status == AvailabilityStatus.Unavailable);
+        Assert.Contains(slices, x => x.RuleId == rule.Id && x.Format == PlayFormat.Offline && x.Status == AvailabilityStatus.PreferOther);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.SaveRule(Principal(other), saved));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.DeleteRule(Principal(other), saved.Id));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.DeleteRule(Principal(master), saved.Id));
+        Assert.Empty(await service.Calendar(Principal(master)));
+        await service.DeleteRule(user, saved.Id);
+        loaded = await service.Calendar(user); Assert.Equal(2, loaded.Count);
+        Assert.All(loaded, x => Assert.Equal(RepeatKind.Once, x.Repeat));
+        Assert.Equal(CalendarEngine.ToUtc(exception.LocalStart, exception.Zone), loaded.Single(x => x.Id == exception.Id).StartUtc);
+        Assert.Single(CalendarEngine.Expand(loaded, DateTime.SpecifyKind(start, DateTimeKind.Utc), DateTime.SpecifyKind(start.AddHours(6), DateTimeKind.Utc)));
+        // Recreate after deletion; a new identity, no retained duplicate series.
+        saved.Id = Guid.NewGuid(); await service.SaveRule(user, saved);
+        Assert.Equal(3, (await service.Calendar(user)).Count);
+        await service.DeleteRule(user, saved.Id);
+      }
+      var foreign = new AvailabilityRule { Zone = "UTC", LocalStart = start, LocalEnd = start.AddHours(1) };
+      await service.SaveRule(Principal(other), foreign);
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.DeleteRules(user, [exception.Id, foreign.Id]));
+      Assert.Equal(2, (await service.Calendar(user)).Count); // Batch denied before any deletion.
+      await Assert.ThrowsAsync<ArgumentException>(() => service.DeleteRules(user, []));
+      // A malformed persisted rule produces no calendar results but is still listed and removable.
+      var invalid = new AvailabilityRule { UserId = owner.Id, Zone = "UTC", Repeat = RepeatKind.Weekly, Days = [], LocalStart = start, LocalEnd = start.AddHours(1) };
+      await using (var db = factory.CreateDbContext()) { db.Add(invalid); await db.SaveChangesAsync(); }
+      Assert.Contains(await service.Calendar(user), x => x.Id == invalid.Id);
+      Assert.Empty(CalendarEngine.Expand([invalid], DateTime.SpecifyKind(start, DateTimeKind.Utc), DateTime.SpecifyKind(start.AddDays(7), DateTimeKind.Utc)));
+      await service.DeleteRule(user, invalid.Id);
+      await service.DeleteRules(user, [exception.Id, exception.Id]); // Only explicitly selected exceptions.
+      Assert.Equal(secondException.Id, Assert.Single(await service.Calendar(user)).Id);
+    }
+    finally
+    {
+      NpgsqlConnection.ClearAllPools();
+      await using var drop = new NpgsqlCommand($"DROP DATABASE {name} WITH (FORCE)", admin); await drop.ExecuteNonQueryAsync();
+    }
+  }
+
   private sealed class TestFactory(string connection) : IDbContextFactory<ApplicationDbContext>
   {
     public ApplicationDbContext CreateDbContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connection).Options);

@@ -1,0 +1,99 @@
+@using DndEconomy.Domain.Collaboration
+@inject IJSRuntime JS
+
+<section id="recurring-windows" class="calendar-tools recurring-windows" aria-labelledby="recurring-title">
+  <h2 id="recurring-title">Повторяющиеся окна</h2>
+  <p>Все ваши правила, включая завершённые и не видимые в сетке. Даты и время указаны в часовом поясе каждого правила.</p>
+  @if (!Rules.Any(x => x.Repeat != RepeatKind.Once)) { <p>Повторяющихся окон пока нет. Создайте «+ Окно» и настройте повтор.</p> }
+  <div class="recurring-list">
+    @foreach (var item in Rules.Where(x => x.Repeat != RepeatKind.Once))
+    {
+      <article class="recurring-card" @key="item.Id">
+        <h3>@Repeat(item.Repeat) · @item.LocalStart.ToString("HH:mm")–@item.LocalEnd.ToString("HH:mm")</h3>
+        <dl>
+          <dt>Дни</dt><dd>@Days(item)</dd>
+          <dt>Период / затрагиваемые даты</dt><dd>С @item.LocalStart.ToString("dd.MM.yyyy") — @(item.RepeatUntil?.ToString("dd.MM.yyyy") ?? "без даты окончания") @(item.RepeatUntil is null ? "" : "(включительно)")</dd>
+          <dt>Время</dt><dd>@item.LocalStart.ToString("HH:mm")–@item.LocalEnd.ToString("HH:mm") @(item.LocalEnd.TimeOfDay <= item.LocalStart.TimeOfDay ? "(до следующего дня)" : "")</dd>
+          <dt>Доступность</dt><dd>@Status(item.Status)</dd>
+          <dt>Формат</dt><dd>@Format(item.Format)</dd>
+          <dt>Часовой пояс</dt><dd>@item.Zone</dd>
+        </dl>
+        @if (item.Repeat == RepeatKind.Monthly) { <p>Несуществующие числа месяца пропускаются (например, 31-е в апреле).</p> }
+        @if ((item.Repeat is RepeatKind.Weekly or RepeatKind.Monthly && item.Days.Length == 0) || item.RepeatUntil < DateOnly.FromDateTime(item.LocalStart))
+        { <p role="status">Параметры не создают дат. Правило можно исправить или удалить.</p> }
+        <div class="calendar-toolbar"><button class="btn" @onclick="() => OnEdit.InvokeAsync(item)">Изменить</button><button class="btn" @onclick="() => BeginDelete(item)">Удалить</button></div>
+      </article>
+    }
+  </div>
+  <p>Разовые окна имеют приоритет над повтором в совпадающем формате. Изменение или удаление серии сохраняет их. Часы перехода DST пропускаются по прежним правилам.</p>
+  <details><summary>Разовые окна и исключения (@Once.Count)</summary>
+    <p>Они независимы от серии и могут затрагивать другие даты. Здесь показаны все ваши разовые окна, без автоматической привязки к повтору.</p>
+    @foreach (var item in Once)
+    {
+      <article class="recurring-card" @key="item.Id"><p>@OnceLabel(item)</p><button class="btn" @onclick="() => BeginDelete(null, item.Id)">Удалить разовое окно</button></article>
+    }
+  </details>
+</section>
+@if (deleting)
+{
+  <dialog id="calendar-rule-delete" class="calendar-dialog calendar-editor" aria-labelledby="delete-rule-title" @onkeydown="DeleteKey">
+    <header><h2 id="delete-rule-title">Что удалить?</h2><button class="btn" disabled="@busy" @onclick="Cancel" aria-label="Закрыть">✕</button></header>
+    @if (target is not null)
+    {
+      <label class="calendar-checkbox"><input type="radio" name="delete-scope" checked="@deleteSeries" @onchange="() => deleteSeries = true" /> Всё повторяющееся правило</label>
+      <p>@Repeat(target.Repeat), @target.LocalStart.ToString("dd.MM.yyyy HH:mm")–@target.LocalEnd.ToString("HH:mm") · @target.Zone</p>
+      <label class="calendar-checkbox"><input type="radio" name="delete-scope" checked="@(!deleteSeries)" @onchange="() => deleteSeries = false" /> Только выбранные разовые исключения</label>
+    }
+    @if (deleteSeries)
+    { <p role="status">Удалится только эта серия. Все разовые окна (@Once.Count) сохранятся, включая изменения отдельных дат. В остальное время начнут действовать другие пересекающиеся правила либо «Не заполнено».</p> }
+    else
+    {
+      <p>Выберите разовые окна явно. Повторяющееся правило сохранится. На выбранных датах снова начнёт действовать повтор или другое окно; без них — «Не заполнено».</p>
+      @foreach (var item in Once)
+      {
+        <label class="calendar-checkbox"><input type="checkbox" checked="@selected.Contains(item.Id)" @onchange="() => Toggle(item.Id)" /> @OnceLabel(item)</label>
+      }
+      @if (Once.Count == 0) { <p>Разовых исключений нет.</p> }
+    }
+    <p>Удаление нельзя отменить. Календарь, покрытие и текущие запросы подбора будут пересчитаны.</p>
+    <div class="calendar-toolbar"><button class="btn btn--primary" disabled="@(busy || !deleteSeries && selected.Count == 0)" @onclick="ConfirmDelete">Подтвердить удаление @(deleteSeries ? "правила" : $"окон ({selected.Count})")</button><button class="btn" disabled="@busy" @onclick="Cancel">Отмена</button></div>
+  </dialog>
+}
+
+@code {
+  [Parameter, EditorRequired] public List<AvailabilityRule> Rules { get; set; } = [];
+  [Parameter] public EventCallback<AvailabilityRule> OnEdit { get; set; }
+  [Parameter] public EventCallback<Guid[]> OnDelete { get; set; }
+  private AvailabilityRule? target;
+  private bool deleting, deleteSeries, busy;
+  private HashSet<Guid> selected = [];
+  private List<AvailabilityRule> Once => Rules.Where(x => x.Repeat == RepeatKind.Once).ToList();
+  /// <summary>Открывает тот же выбор удаления из редактора окна.</summary>
+  public void RequestDelete(AvailabilityRule item)
+  {
+    BeginDelete(item.Repeat == RepeatKind.Once ? null : item, item.Repeat == RepeatKind.Once ? item.Id : null);
+    StateHasChanged();
+  }
+  private void BeginDelete(AvailabilityRule? item, Guid? once = null) { target = item; deleteSeries = item is not null; selected.Clear(); if (once is { } id) selected.Add(id); deleting = true; }
+  private void Cancel() { if (!busy) deleting = false; }
+  private void DeleteKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e) { if (e.Key == "Escape") Cancel(); }
+  private void Toggle(Guid id) { if (!selected.Add(id)) selected.Remove(id); }
+  private async Task ConfirmDelete()
+  {
+    if (busy || !deleteSeries && selected.Count == 0) return;
+    busy = true;
+    try { await OnDelete.InvokeAsync(deleteSeries ? [target!.Id] : selected.ToArray()); deleting = false; }
+    finally { busy = false; }
+  }
+  protected override async Task OnAfterRenderAsync(bool firstRender) { if (deleting) await JS.InvokeVoidAsync("chatUi.openDialog", "calendar-rule-delete"); }
+  private static string Repeat(RepeatKind r) => r switch { RepeatKind.Daily => "Ежедневно", RepeatKind.Weekly => "По дням недели", RepeatKind.Monthly => "По числам месяца", _ => $"Неизвестный повтор ({(int)r})" };
+  private static string Days(AvailabilityRule r) => r.Repeat switch
+  {
+    RepeatKind.Daily => "Каждый день",
+    RepeatKind.Weekly => string.Join(", ", r.Days.Select(x => x is >= 0 and <= 6 ? System.Globalization.CultureInfo.GetCultureInfo("ru-RU").DateTimeFormat.GetDayName((DayOfWeek)x) : $"Некорректный день {x}")),
+    _ => string.Join(", ", r.Days)
+  };
+  private static string Format(PlayFormat f) => f switch { PlayFormat.Online => "Онлайн", PlayFormat.Offline => "Офлайн", PlayFormat.Both => "Онлайн и офлайн", _ => $"Неизвестный формат ({(int)f})" };
+  private static string Status(AvailabilityStatus s) => s switch { AvailabilityStatus.Certain => "Точно могу", AvailabilityStatus.PreferOther => "Могу, но предпочёл бы другое время", AvailabilityStatus.Unlikely => "Скорее всего не смогу", AvailabilityStatus.Unavailable => "Точно не смогу", _ => "Не заполнено" };
+  private static string OnceLabel(AvailabilityRule r) => $"{r.LocalStart:dd.MM.yyyy HH:mm} — {r.LocalEnd:dd.MM.yyyy HH:mm} · {r.Zone} · {Status(r.Status)} · {Format(r.Format)}";
+}
