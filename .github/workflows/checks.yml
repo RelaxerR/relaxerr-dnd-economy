@@ -28,6 +28,11 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release --logger 'trx;LogFileName=tests.trx'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/browser/chat-push.test.cjs
+      - run: python3 tests/production-like/vapid-generator-test.py
       - run: dotnet tool install --global dotnet-ef --version 10.0.10
       - run: dotnet ef migrations has-pending-model-changes --project src/DndEconomy.Infrastructure --startup-project src/DndEconomy.Web --configuration Release --no-build
       - uses: actions/upload-artifact@v4
@@ -35,3 +40,41 @@ jobs:
         with:
           name: test-results
           path: tests/**/TestResults/*.trx
+  production-like:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: docker compose -f tests/production-like/docker-compose.yml up -d --build
+      - name: Wait for initial HTTP readiness
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:5291/Account/Login > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - run: docker compose -f tests/production-like/docker-compose.yml exec -T web sh -c 'test -w /data/chat-files'
+      - run: dotnet publish tests/production-like/Fixture.csproj -c Release -o /tmp/chat-fixture
+      - run: docker cp /tmp/chat-fixture relaxerr-chat-acceptance-web-1:/tmp/fixture
+      - run: docker compose -f tests/production-like/docker-compose.yml exec -T web dotnet /tmp/fixture/Fixture.dll > /tmp/chat-manifest.json
+      - run: docker compose -f tests/production-like/docker-compose.yml exec -T nginx nginx -t
+      - run: python3 tests/production-like/smoke.py /tmp/chat-manifest.json
+      - run: docker compose -f tests/production-like/docker-compose.yml restart web
+      - name: Wait for HTTP after restart
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:5291/Account/Login > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - run: python3 tests/production-like/smoke.py /tmp/chat-manifest.json
+      - run: docker compose -f tests/production-like/docker-compose.yml exec -T web dotnet /tmp/fixture/Fixture.dll expire
+      - run: python3 tests/production-like/smoke.py /tmp/chat-manifest.json --expired
+      - name: Collect diagnostic logs
+        if: failure()
+        run: docker compose -f tests/production-like/docker-compose.yml logs --no-color --tail 100
+      - name: Stop isolated stack
+        if: always()
+        run: docker compose -f tests/production-like/docker-compose.yml down
