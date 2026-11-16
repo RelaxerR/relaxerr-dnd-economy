@@ -27,7 +27,7 @@
     }
     <button class="btn btn--primary" @onclick="Save">Сохранить настройки</button>
     <p>Для push нужны HTTPS и разрешение браузера. На iPhone: «Поделиться» → «На экран Домой», затем откройте сайт с домашнего экрана и подключите уведомления. На Android откройте сайт в браузере и разрешите уведомления.</p>
-    @if (string.IsNullOrEmpty(Push.PublicKey)) { <p>Web Push ещё не настроен администратором.</p> }
+    @if (Push.ConfigurationError is { } configurationError) { <p role="status">@configurationError</p> }
     else { <button class="btn" id="chat-push-enable">Подключить push на этом устройстве</button> }
     <button class="btn" @onclick="Disable">Отключить push на этом устройстве</button>
     <p>На экране блокировки показывается только тип события, без текста сообщений. Перед сменой аккаунта отключите push этого устройства.</p>
@@ -58,9 +58,9 @@
   private DotNetObjectReference<ChatSettings>? reference;
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
-    if (firstRender && !string.IsNullOrEmpty(Push.PublicKey))
+    if (preference is not null && !string.IsNullOrEmpty(Push.PublicKey))
     {
-      reference = DotNetObjectReference.Create(this);
+      reference ??= DotNetObjectReference.Create(this);
       await JS.InvokeVoidAsync("chatPush.bind", reference, Push.PublicKey);
     }
   }

@@ -5,6 +5,8 @@ namespace DndEconomy.Application.Collaboration;
 public interface IPushService
 {
   string? PublicKey { get; }
+  /// <summary>Безопасная диагностика конфигурации без значений ключей; null означает готовность.</summary>
+  string? ConfigurationError { get; }
   Task Subscribe(ClaimsPrincipal user, string endpoint, string p256dh, string auth);
   Task Unsubscribe(ClaimsPrincipal user, string endpoint);
 }

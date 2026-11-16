@@ -54,7 +54,7 @@ window.chatPush = {
     });
   },
   async enable(publicKey) {
-    if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Web Push недоступен. На iPhone сначала добавьте сайт на домашний экран и откройте оттуда.');
+    if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('Web Push недоступен. На iPhone сначала добавьте сайт на домашний экран и откройте оттуда.');
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') throw new Error('Разрешите уведомления в настройках браузера.');
     const registration = await navigator.serviceWorker.register('/chat-sw.js');
@@ -62,6 +62,9 @@ window.chatPush = {
     const key = publicKey.replace(/-/g, '+').replace(/_/g, '/');
     const bytes = Uint8Array.from(atob(key.padEnd(Math.ceil(key.length / 4) * 4, '=')), c => c.charCodeAt(0));
     const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
+    const existingKey = subscription.options.applicationServerKey;
+    if (existingKey && (existingKey.byteLength !== bytes.length || new Uint8Array(existingKey).some((value, i) => value !== bytes[i])))
+      throw new Error('Ключ уведомлений изменился. Отключите push на этом устройстве и подключите заново.');
     const json = subscription.toJSON();
     return { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth };
   },
