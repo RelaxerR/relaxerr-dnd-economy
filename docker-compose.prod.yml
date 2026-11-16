@@ -33,6 +33,7 @@ services:
       MusicReview__DestinationPath: /music/clean
     volumes:
       - chatfiles:/data/chat-files
+      - dataprotection:/home/app/.aspnet/DataProtection-Keys
       - ${MUSIC_SOURCE_PATH:?Set MUSIC_SOURCE_PATH}:/music/source
       - ${MUSIC_DESTINATION_PATH:?Set MUSIC_DESTINATION_PATH}:/music/clean
     ports:
@@ -46,3 +47,6 @@ networks:
 volumes:
   pgdata:
   chatfiles:
+  dataprotection:
+    external: true
+    name: relaxerr-dnd-economy_dataprotection
