@@ -15,7 +15,8 @@ namespace DndEconomy.Infrastructure.Collaboration;
 /// <summary>Регистрация и удаление подписки с проверкой Identity и поставщика push.</summary>
 public sealed class PushService(IDbContextFactory<ApplicationDbContext> factory, IConfiguration config) : IPushService
 {
-  public string? PublicKey => config["WebPush:PublicKey"];
+  public string? ConfigurationError => WebPushConfiguration.Error(config);
+  public string? PublicKey => ConfigurationError is null ? config["WebPush:PublicKey"] : null;
 
   /// <summary>Разрешённые браузерные push-службы; произвольные URL не отправляются сервером.</summary>
   public static bool AllowedEndpoint(string endpoint)
@@ -29,7 +30,7 @@ public sealed class PushService(IDbContextFactory<ApplicationDbContext> factory,
   /// <inheritdoc />
   public async Task Subscribe(ClaimsPrincipal user, string endpoint, string p256dh, string auth)
   {
-    if (string.IsNullOrEmpty(PublicKey) || string.IsNullOrEmpty(config["WebPush:PrivateKey"])) throw new ArgumentException("Web Push ещё не настроен администратором.");
+    if (ConfigurationError is { } error) throw new ArgumentException(error);
     if (!AllowedEndpoint(endpoint) || !Key(p256dh, 65) || !Key(auth, 16)) throw new ArgumentException("Некорректная подписка устройства.");
     await using var db = await factory.CreateDbContextAsync(); await using var tx = await db.Database.BeginTransactionAsync();
     await ChatAccess.Lock(db); var a = await ChatAccess.Authenticate(db, user);
@@ -71,11 +72,12 @@ public sealed class ChatPushWorker(IDbContextFactory<ApplicationDbContext> facto
   {
     using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(15) };
     using var client = new WebPushClient(http);
+    if (WebPushConfiguration.Error(config) is { } error) logger.LogWarning("{ConfigurationError}", error);
     while (!stoppingToken.IsCancellationRequested)
     {
       try
       {
-        if (!string.IsNullOrEmpty(config["WebPush:PrivateKey"])) await Deliver(client, stoppingToken);
+        if (WebPushConfiguration.Error(config) is null) await Deliver(client, stoppingToken);
       }
       catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
       catch (Exception e) { logger.LogWarning("Ошибка фоновой доставки push: {Type}", e.GetType().Name); }
@@ -86,6 +88,7 @@ public sealed class ChatPushWorker(IDbContextFactory<ApplicationDbContext> facto
   /// <summary>Доставляет одну пачку; HTTP-клиент подменяется в тестах без реальных push-служб.</summary>
   public async Task Deliver(WebPushClient client, CancellationToken ct)
   {
+    if (WebPushConfiguration.Error(config) is not null) return;
     var now = clock.GetUtcNow().UtcDateTime;
     await using var db = await factory.CreateDbContextAsync(ct);
     await using var tx = await db.Database.BeginTransactionAsync(ct);

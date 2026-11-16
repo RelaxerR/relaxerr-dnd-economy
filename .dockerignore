@@ -5,5 +5,12 @@
 **/logs/
 .git/
 .github/
+.env
+.env.*
+**/*.env
+**/*.pem
+**/*.key
+**/private-chat-files/
+**/TestResults/
 .claude/
 *.md

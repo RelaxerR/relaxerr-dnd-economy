@@ -157,6 +157,16 @@ public sealed class PostgresTests
       Assert.Equal("Linked", (await new EconomyPricingReadStore(factory, NullLogger<EconomyPricingReadStore>.Instance).GetActiveSessionContextAsync(new(2026, 12, 2), default))!.SessionName);
       Assert.Equal(200m, (await prices.CalculateCurrentPriceAsync(item.Id, default))!.BuyPrice);
       Assert.Equal(200m, (await catalog.GetPageAsync(new(), default)).Items.Single().BuyPrice);
+      // Both reminder thresholds survive a new worker and repeated ticks.
+      var reminderClock = new TestClock(new DateTimeOffset(assigned.StartUtc.AddHours(-24), TimeSpan.Zero));
+      var reminderWorker = new CollaborationWorker(factory, config, reminderClock, NullLogger<CollaborationWorker>.Instance);
+      await reminderWorker.Tick(default); await reminderWorker.Tick(default);
+      Assert.Single(await chat.Notices(principals[2]), n => n.EventKey == $"reminder:{assigned.Id}:24");
+      Assert.DoesNotContain(await chat.Notices(principals[2]), n => n.EventKey == $"reminder:{assigned.Id}:1");
+      reminderClock.Advance(TimeSpan.FromHours(23));
+      await new CollaborationWorker(factory, config, reminderClock, NullLogger<CollaborationWorker>.Instance).Tick(default);
+      await reminderWorker.Tick(default);
+      Assert.Single(await chat.Notices(principals[2]), n => n.EventKey == $"reminder:{assigned.Id}:1");
       var playerRule = (await scheduling.Calendar(principals[3])).Single();
       await scheduling.DeleteRule(principals[3], playerRule.Id);
       snapshot = await chat.Snapshot(principals[0], room, 100, false);
@@ -204,16 +214,36 @@ public sealed class PostgresTests
       Assert.False(PushService.AllowedEndpoint("https://fcm.googleapis.com.attacker.invalid/send"));
       var endpoint = "https://fcm.googleapis.com/fcm/send/test";
       await push.Subscribe(principals[2], endpoint, vapid.PublicKey, Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)).TrimEnd('=').Replace('+','-').Replace('/','_'));
+      await Assert.ThrowsAsync<ArgumentException>(() => push.Subscribe(principals[3], endpoint, vapid.PublicKey, Convert.ToBase64String(RandomNumberGenerator.GetBytes(16))));
+      await Assert.ThrowsAsync<ArgumentException>(() => push.Subscribe(principals[2], "http://fcm.googleapis.com/test", vapid.PublicKey, Convert.ToBase64String(RandomNumberGenerator.GetBytes(16))));
+      await chat.Send(principals[1], room, "Public push event", []);
+      await chat.Send(principals[1], room, "Hello @P2", []);
+      await chat.Send(principals[1], thread, "Private thread push event", []);
+      var expectedKinds = new[] { "message", "private", "thread", "mention", "poll", "request", "assigned", "cancelled", "reminder" };
       await using (var db = factory.CreateDbContext())
       {
         (await db.Set<ChatPushSubscription>().SingleAsync()).CreatedUtc = clock.GetUtcNow().UtcDateTime.AddMinutes(-1);
-        db.Add(new ChatNotice { UserId = accounts[2].Id, RoomId = room, MessageId = dm, EventKey = "test-delivery", Kind = "private", Title = "Новое личное сообщение", CreatedUtc = clock.GetUtcNow().UtcDateTime });
+        var notices = await db.Set<ChatNotice>().Where(x => x.UserId == accounts[2].Id).ToListAsync();
+        foreach (var notice in notices) notice.Read = true;
+        foreach (var kind in expectedKinds)
+        {
+          var notice = notices.First(x => x.Kind == kind);
+          notice.Read = false; notice.CreatedUtc = clock.GetUtcNow().UtcDateTime;
+          Assert.DoesNotContain("private needle", notice.Title);
+          Assert.DoesNotContain("P2", notice.Title);
+        }
         await db.SaveChangesAsync();
       }
       var httpHandler = new FakePushHandler(); using var http = new HttpClient(httpHandler); using var client = new WebPushClient(http);
       var pushWorker = new ChatPushWorker(factory, pushConfig, clock, NullLogger<ChatPushWorker>.Instance);
       await pushWorker.Deliver(client, default); await pushWorker.Deliver(client, default);
-      Assert.Equal(1, httpHandler.Requests);
+      Assert.Equal(expectedKinds.Length, httpHandler.Requests);
+      await using (var db = factory.CreateDbContext())
+      {
+        var deliveredKinds = await (from delivery in db.Set<ChatPushDelivery>() join notice in db.Set<ChatNotice>() on delivery.NoticeId equals notice.Id
+          where delivery.SentUtc != null select notice.Kind).ToListAsync();
+        Assert.Equal(expectedKinds.Order(), deliveredKinds.Order());
+      }
       await using (var db = factory.CreateDbContext())
       {
         db.Add(new ChatNotice { UserId = accounts[2].Id, RoomId = room, MessageId = dm, EventKey = "test-gone", Kind = "private", Title = "Новое личное сообщение", CreatedUtc = clock.GetUtcNow().UtcDateTime });

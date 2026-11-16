@@ -123,7 +123,7 @@
           <label><input type="checkbox" checked="@recipients.Contains(p.Id)" @onchange="e => Recipient(p.Id, (bool)e.Value!)" /> @p.Name@(!p.IsActive ? " (временно не активен)" : "")</label>
         }
       </details>
-      <label class="chat-attachment" title="Прикрепить файл">📎<span class="sr-only">Вложение к сообщению</span><InputFile OnChange="e => pendingFile = e.File" /></label>
+      <label class="chat-attachment" title="Прикрепить файл">📎<span class="sr-only">Вложение к сообщению</span><InputFile OnChange="SelectAttachment" /></label>
       @if (pendingFile is not null) { <p>📎 @pendingFile.Name <button class="btn" @onclick="() => pendingFile = null">Убрать</button></p> }
       @if (Recognized() is { } recognized)
       {
@@ -275,6 +275,7 @@
   private DateTime? Recognized() => ChatTimeParser.Recognize(draft);
   private Task Send() => Run(async () =>
   {
+    if (pendingFile is not null) ValidateAttachment(pendingFile);
     busy = true;
     try
     {
@@ -291,10 +292,22 @@
   });
   private Task Upload(Guid id, InputFileChangeEventArgs e) => Run(async () =>
   {
+    ValidateAttachment(e.File);
     busy = true;
     try { await using var stream = e.File.OpenReadStream(100_000_000, lifetime.Token); await Chat.Upload(user, id, e.File.Name, stream, lifetime.Token); await Refresh(); }
     finally { busy = false; }
   });
+  private Task SelectAttachment(InputFileChangeEventArgs e) => Run(() =>
+  {
+    pendingFile = null;
+    ValidateAttachment(e.File);
+    pendingFile = e.File;
+    return Task.CompletedTask;
+  });
+  private static void ValidateAttachment(IBrowserFile file)
+  {
+    if (file.Size > 100_000_000) throw new ArgumentException("Лимит файла — 100 000 000 байт.");
+  }
   private Task Delete(Guid id) => Run(async () => { if (await JS.InvokeAsync<bool>("confirm", "Удалить сообщение?")) { await Chat.Delete(user, id); await Refresh(); } });
   private Task Highlight(Guid id) => Run(async () => { await Chat.Highlight(user, id); await Refresh(); });
   private Task CreatePoll() => Run(async () => { await Chat.CreatePoll(user, room, question, pollOptions.Split('\n', StringSplitOptions.RemoveEmptyEntries), multiple, CalendarEngine.ToUtc(pollEnd, preference.Zone), recipients.ToArray()); question = pollOptions = ""; recipients.Clear(); await Refresh(); });
