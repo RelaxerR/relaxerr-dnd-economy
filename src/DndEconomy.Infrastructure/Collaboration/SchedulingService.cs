@@ -28,8 +28,31 @@ public sealed class SchedulingService(IDbContextFactory<ApplicationDbContext> fa
   public async Task<List<AvailabilityRule>> Calendar(ClaimsPrincipal user)
   {
     await using var db = await factory.CreateDbContextAsync(); var a = await ChatAccess.Authenticate(db, user);
-    return await db.Set<AvailabilityRule>().AsNoTracking().Where(x => x.UserId == a.Id).OrderBy(x => x.LocalStart).ToListAsync();
+    return await CalendarRules(db, a.Id).ToListAsync();
   }
+
+  /// <inheritdoc />
+  public async Task<UserCalendar?> ViewUserCalendar(ClaimsPrincipal user, Guid userId)
+  {
+    await using var db = await factory.CreateDbContextAsync();
+    var actor = await ChatAccess.Authenticate(db, user);
+    if (!actor.Admin) throw new UnauthorizedAccessException();
+
+    var owner = await db.Users.AsNoTracking().Where(x => x.Id == userId)
+      .Select(x => new
+      {
+        x.DisplayName,
+        Zone = db.Set<ChatPreference>().Where(p => p.UserId == x.Id).Select(p => p.Zone).SingleOrDefault()
+      })
+      .SingleOrDefaultAsync();
+    if (owner is null) return null;
+
+    var rules = await CalendarRules(db, userId).ToListAsync();
+    return new(owner.DisplayName, owner.Zone ?? new ChatPreference().Zone, rules);
+  }
+
+  private static IQueryable<AvailabilityRule> CalendarRules(ApplicationDbContext db, Guid userId)
+    => db.Set<AvailabilityRule>().AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.LocalStart);
 
   /// <inheritdoc />
   public Task SaveRule(ClaimsPrincipal user, AvailabilityRule rule) => Write(user, async (db, a) =>

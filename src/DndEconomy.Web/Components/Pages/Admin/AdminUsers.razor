@@ -47,6 +47,7 @@
           <label class="admin-user-active"><input type="checkbox" checked="@user.IsActive" disabled="@(user.Id == currentUserId || changingActivity)"
             aria-label="@($"Активен: {user.DisplayName}")" @onchange="e => SetActiveAsync(user, (bool)e.Value!)" /> Активен</label>
           @if (!user.IsActive) { <span>Учётка временно не активна</span> }
+          <a class="btn" href="@($"/admin/users/{user.Id}/calendar")" aria-label="@($"Календарь: {user.DisplayName}")">Календарь</a>
           @if (user.Id != currentUserId)
           {
             <button class="btn admin-user-row__delete" @onclick="() => DeleteUserAsync(user)">Удалить</button>
