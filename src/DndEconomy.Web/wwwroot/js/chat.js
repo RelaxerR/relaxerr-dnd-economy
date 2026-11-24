@@ -28,7 +28,11 @@ window.chatUi = {
     }
 
     composer.addEventListener('input', event => {
-      if (event.target === findDraft()) inputVersion++;
+      const draft = findDraft();
+      if (!draft || event.target !== draft) return;
+      inputVersion++;
+      reference.invokeMethodAsync('UpdateDraft', Number(draft.dataset.chatDraft), draft.value)
+        .catch(error => console.error('Chat draft update failed', error));
     });
     composer.addEventListener('keydown', event => {
       if (event.target !== findDraft() || event.key !== 'Enter' || event.shiftKey ||

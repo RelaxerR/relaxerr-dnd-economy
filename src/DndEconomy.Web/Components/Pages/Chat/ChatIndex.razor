@@ -127,7 +127,7 @@
       <div class="chat-compose-row">
         <label class="sr-only" for="chat-draft">Сообщение</label>
         <textarea id="chat-draft" @key="version" data-chat-draft="@version" value="@initialDraft"
-                  @oninput="e => DraftChanged(version, e)" placeholder="Сообщение" maxlength="12000" rows="2"></textarea>
+                  placeholder="Сообщение" maxlength="12000" rows="2"></textarea>
         <button type="button" class="btn btn--primary chat-send" data-chat-send
                 aria-label="@(busy ? "Отправка…" : "Отправить")" disabled="@(!interactive || busy)">
           <span class="chat-send-label">@(busy ? "Отправка…" : "Отправить")</span><span class="chat-send-icon" aria-hidden="true">➤</span>
@@ -160,7 +160,7 @@
       }
       </details>
       @if (pendingFile is not null) { <p>📎 @pendingFile.Name <button class="btn" disabled="@busy" @onclick="() => pendingFile = null">Убрать</button></p> }
-      @if (Recognized() is { } recognized)
+      @if (recognizedTime is { } recognized)
       {
         <label><input type="checkbox" disabled="@busy" @bind="confirmTime" /> Подтвердить дату @recognized.ToString("dd.MM.yyyy HH:mm") (@preference.Zone); показать местное время читателям</label>
       }
@@ -182,6 +182,7 @@
   private string draft = "", newRoom = "", search = "", question = "", pollOptions = "";
   private string initialDraft = "";
   private int draftVersion;
+  private DateTime? recognizedTime;
   private ElementReference composer;
   private string? boundComposerId;
   private DotNetObjectReference<ChatIndex>? composerReference;
@@ -309,17 +310,23 @@
     editing = message;
     // Change the textarea's initial value only when replacing the draft.
     initialDraft = draft = text;
+    recognizedTime = ChatTimeParser.Recognize(text);
     draftVersion++;
     confirmTime = false;
   }
-  private void DraftChanged(int version, ChangeEventArgs e)
+  /// <summary>Обновляет подсказку о дате и статус печати для текущего черновика.</summary>
+  [JSInvokable]
+  public void UpdateDraft(int version, string? text)
   {
-    if (version != draftVersion) return;
-    draft = e.Value?.ToString() ?? "";
+    if (version != draftVersion || text is null) return;
+    var newTime = ChatTimeParser.Recognize(text);
+    var datePromptChanged = confirmTime || newTime != recognizedTime;
+    draft = text;
+    recognizedTime = newTime;
     confirmTime = false;
+    if (datePromptChanged) StateHasChanged();
   }
   private void Recipient(Guid id, bool selected) { if (selected) recipients.Add(id); else recipients.Remove(id); }
-  private DateTime? Recognized() => ChatTimeParser.Recognize(draft);
 
   /// <summary>Отправляет снимок текста из браузера по нажатию кнопки или Enter.</summary>
   [JSInvokable]
@@ -331,7 +338,7 @@
     var edit = editing;
     var file = pendingFile;
     var readers = recipients.ToArray();
-    var confirmed = confirmTime && text == draft ? Recognized() : null;
+    var confirmed = confirmTime && text == draft ? recognizedTime : null;
     var sent = false;
     busy = true;
     try
