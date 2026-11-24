@@ -3,8 +3,11 @@
 
 <section id="recurring-windows" class="calendar-tools recurring-windows" aria-labelledby="recurring-title">
   <h2 id="recurring-title">Повторяющиеся окна</h2>
-  <p>Все ваши правила, включая завершённые и не видимые в сетке. Даты и время указаны в часовом поясе каждого правила.</p>
-  @if (!Rules.Any(x => x.Repeat != RepeatKind.Once)) { <p>Повторяющихся окон пока нет. Создайте «+ Окно» и настройте повтор.</p> }
+  <p>@(ReadOnly ? "Все повторяющиеся правила пользователя" : "Все ваши правила"), включая завершённые и не видимые в сетке. Даты и время указаны в часовом поясе каждого правила.</p>
+  @if (!Rules.Any(x => x.Repeat != RepeatKind.Once))
+  {
+    <p>Повторяющихся окон пока нет. @if (!ReadOnly) { <text>Создайте «+ Окно» и настройте повтор.</text> }</p>
+  }
   <div class="recurring-list">
     @foreach (var item in Rules.Where(x => x.Repeat != RepeatKind.Once))
     {
@@ -20,21 +23,27 @@
         </dl>
         @if (item.Repeat == RepeatKind.Monthly) { <p>Несуществующие числа месяца пропускаются (например, 31-е в апреле).</p> }
         @if ((item.Repeat is RepeatKind.Weekly or RepeatKind.Monthly && item.Days.Length == 0) || item.RepeatUntil < DateOnly.FromDateTime(item.LocalStart))
-        { <p role="status">Параметры не создают дат. Правило можно исправить или удалить.</p> }
-        <div class="calendar-toolbar"><button class="btn" @onclick="() => OnEdit.InvokeAsync(item)">Изменить</button><button class="btn" @onclick="() => BeginDelete(item)">Удалить</button></div>
+        { <p role="status">Параметры не создают дат. @if (!ReadOnly) { <text>Правило можно исправить или удалить.</text> }</p> }
+        @if (!ReadOnly)
+        {
+          <div class="calendar-toolbar"><button class="btn" @onclick="() => OnEdit.InvokeAsync(item)">Изменить</button><button class="btn" @onclick="() => BeginDelete(item)">Удалить</button></div>
+        }
       </article>
     }
   </div>
-  <p>Разовые окна имеют приоритет над повтором в совпадающем формате. Изменение или удаление серии сохраняет их. Часы перехода DST пропускаются по прежним правилам.</p>
+  <p>Разовые окна имеют приоритет над повтором в совпадающем формате. @if (!ReadOnly) { <text>Изменение или удаление серии сохраняет их.</text> } Часы перехода DST пропускаются по прежним правилам.</p>
   <details><summary>Разовые окна и исключения (@Once.Count)</summary>
-    <p>Они независимы от серии и могут затрагивать другие даты. Здесь показаны все ваши разовые окна, без автоматической привязки к повтору.</p>
+    <p>Они независимы от серии и могут затрагивать другие даты. Здесь показаны все @(ReadOnly ? "разовые окна пользователя" : "ваши разовые окна"), без автоматической привязки к повтору.</p>
     @foreach (var item in Once)
     {
-      <article class="recurring-card" @key="item.Id"><p>@OnceLabel(item)</p><button class="btn" @onclick="() => BeginDelete(null, item.Id)">Удалить разовое окно</button></article>
+      <article class="recurring-card" @key="item.Id">
+        <p>@OnceLabel(item)</p>
+        @if (!ReadOnly) { <button class="btn" @onclick="() => BeginDelete(null, item.Id)">Удалить разовое окно</button> }
+      </article>
     }
   </details>
 </section>
-@if (deleting)
+@if (!ReadOnly && deleting)
 {
   <dialog id="calendar-rule-delete" class="calendar-dialog calendar-editor" aria-labelledby="delete-rule-title" @onkeydown="DeleteKey">
     <header><h2 id="delete-rule-title">Что удалить?</h2><button class="btn" disabled="@busy" @onclick="Cancel" aria-label="Закрыть">✕</button></header>
@@ -62,6 +71,8 @@
 
 @code {
   [Parameter, EditorRequired] public List<AvailabilityRule> Rules { get; set; } = [];
+  /// <summary>Показывает правила без действий редактирования и удаления.</summary>
+  [Parameter] public bool ReadOnly { get; set; }
   [Parameter] public EventCallback<AvailabilityRule> OnEdit { get; set; }
   [Parameter] public EventCallback<Guid[]> OnDelete { get; set; }
   private AvailabilityRule? target;

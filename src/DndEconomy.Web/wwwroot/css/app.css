@@ -854,9 +854,11 @@ body {
 .calendar-hours > div:not(:first-child) { height: 64px; font-size: .72rem; text-align: center; color: #7c7264; }
 .calendar-day { min-width: 0; border-left: 1px solid #e9e3d9; }
 .calendar-track { position: relative; height: 1536px; }
-.calendar-slot { height: 64px; width: 100%; display: block; border: 0; border-bottom: 1px solid #e9e3d9; background: transparent; cursor: crosshair; }
-.calendar-slot:hover { background: #f5efdf; }
-.calendar-block { position: absolute; border: 1px solid; border-left-width: 3px; border-radius: 5px; padding: 3px; font: inherit; font-size: .7rem; overflow: hidden; text-align: left; cursor: pointer; min-height: 8px; }
+.calendar-slot { height: 64px; width: 100%; display: block; box-sizing: border-box; border: 0; border-bottom: 1px solid #e9e3d9; background: transparent; }
+button.calendar-slot { cursor: crosshair; }
+button.calendar-slot:hover { background: #f5efdf; }
+.calendar-block { position: absolute; box-sizing: border-box; border: 1px solid; border-left-width: 3px; border-radius: 5px; padding: 3px; font: inherit; font-size: .7rem; overflow: hidden; text-align: left; min-height: 8px; }
+button.calendar-block { cursor: pointer; }
 .calendar-block strong, .calendar-block span, .calendar-block small { display: block; }
 .calendar-block.session-window--0 { background: #e0efdf; color: #245333; border-color: #63966b; }
 .calendar-block.session-window--1 { background: #faf0cb; color: #665018; border-color: #b29131; }

@@ -100,7 +100,7 @@ app.UseForwardedHeaders(forwardedHeadersOptions);
 
 app.Use(async (context, next) =>
 {
-  if (new[] { "/chat", "/calendar", "/chat-settings", "/chat-files", "/notifications" }.Any(path => context.Request.Path.StartsWithSegments(path)))
+  if (new[] { "/chat", "/calendar", "/chat-settings", "/chat-files", "/notifications", "/admin/users" }.Any(path => context.Request.Path.StartsWithSegments(path)))
     context.Response.Headers.CacheControl = "private, no-store";
   await next();
 });

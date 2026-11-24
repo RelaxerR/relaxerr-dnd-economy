@@ -47,6 +47,12 @@ await db.SaveChangesAsync();
 ClaimsPrincipal Principal(int i) => new(new ClaimsIdentity([
   new Claim(ClaimTypes.NameIdentifier, users[i].Id.ToString()), new Claim("AspNet.Identity.SecurityStamp", users[i].SecurityStamp!),
   new Claim(ClaimTypes.Role, i == 0 ? "Admin" : "Player")], "fixture"));
+var calendarDate = DateTime.UtcNow.Date.AddDays(1);
+await chat.SavePreference(Principal(2), new ChatPreference { Zone = "Europe/Berlin" });
+await new SchedulingService(factory, TimeProvider.System).SaveRule(Principal(2), new AvailabilityRule
+{
+  Zone = "Europe/Berlin", Repeat = RepeatKind.Daily, LocalStart = calendarDate.AddHours(19), LocalEnd = calendarDate.AddHours(21)
+});
 var room = await chat.Main(Principal(0));
 await chat.Send(Principal(0), room, "Приёмка чата: это изолированная тестовая база.", []);
 var message = await chat.Send(Principal(1), room, "Текст остаётся после удаления вложения", [users[2].Id]);
@@ -57,7 +63,11 @@ try
   throw new Exception("Oversize upload accepted");
 }
 catch (ArgumentException) { }
-Console.WriteLine(JsonSerializer.Serialize(new { room, message, file = file100.Id, file100.Length }));
+Console.WriteLine(JsonSerializer.Serialize(new
+{
+  room, message, file = file100.Id, file100.Length, calendarDate = DateOnly.FromDateTime(calendarDate),
+  calendarOwner = users[2].Id, emptyCalendarOwner = users[3].Id
+}));
 
 sealed class FixtureFactory(string connection) : IDbContextFactory<ApplicationDbContext>
 {

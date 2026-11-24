@@ -1,5 +1,3 @@
-@page "/calendar"
-@rendermode InteractiveServer
 @using System.Security.Claims
 @using DndEconomy.Application.Collaboration
 @using DndEconomy.Domain.Collaboration
@@ -11,25 +9,47 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Календарь — Relaxerr</PageTitle>
-<div class="calendar-heading"><div><h1>Мой календарь</h1><p>Ваша доступность · @(preference?.Zone)</p></div><a class="btn" href="/chat">← В чат</a></div>
+<div class="calendar-heading">
+  <div>
+    <h1>@(CanEdit ? "Мой календарь" : viewedUserName is null ? "Календарь пользователя" : $"Календарь · {viewedUserName}")</h1>
+    @if (zone is not null)
+    {
+      <p>@(CanEdit ? "Ваша доступность" : "Только просмотр") · @zone</p>
+    }
+  </div>
+  <a class="btn" href="@(CanEdit ? "/chat" : "/admin/users")">@(CanEdit ? "← В чат" : "← К пользователям")</a>
+</div>
 @if (!string.IsNullOrEmpty(error)) { <p role="alert" class="status-message">@error</p> }
-@if (preference is not null)
+@if (zone is not null)
 {
   <div class="calendar-toolbar calendar-toolbar--navigation">
     <button class="btn" aria-label="Предыдущая неделя" @onclick="() => MoveWeek(-7)">←</button>
     <button class="btn" @onclick="Today">Сегодня</button>
     <button class="btn" aria-label="Следующая неделя" @onclick="() => MoveWeek(7)">→</button>
     <strong>@week.ToString("dd MMM", Russian) — @week.AddDays(6).ToString("dd MMM yyyy", Russian)</strong>
-    <button class="btn btn--primary" aria-label="Добавить окно" @onclick="() => OpenSlot(selectedDay.AddHours(19))">+ Окно</button>
+    @if (CanEdit)
+    {
+      <button class="btn btn--primary" aria-label="Добавить окно" @onclick="() => OpenSlot(selectedDay.AddHours(19))">+ Окно</button>
+    }
     <a class="btn calendar-recurring-link" href="@(Navigation.Uri.Split('#')[0] + "#recurring-windows")">Повторяющиеся окна (@rules.Count(x => x.Repeat != RepeatKind.Once))</a>
-    <a class="btn" href="/chat-settings" aria-label="Часовой пояс">Часовой пояс</a>
+    @if (CanEdit) { <a class="btn" href="/chat-settings" aria-label="Часовой пояс">Часовой пояс</a> }
   </div>
   @if (FromQuery is not null) { <p class="calendar-request">Период запроса: @from.ToString("dd.MM.yyyy") — @until.AddDays(-1).ToString("dd.MM.yyyy")</p> }
   <div class="calendar-day-actions"><strong>@selectedDay.ToString("dddd, dd MMMM", Russian)</strong>
-    <button class="btn" @onclick="() => AllDay(AvailabilityStatus.Certain)">Весь день свободен</button>
-    <button class="btn" @onclick="() => AllDay(AvailabilityStatus.Unavailable)">Весь день занят</button>
+    @if (CanEdit)
+    {
+      <button class="btn" @onclick="() => AllDay(AvailabilityStatus.Certain)">Весь день свободен</button>
+      <button class="btn" @onclick="() => AllDay(AvailabilityStatus.Unavailable)">Весь день занят</button>
+    }
   </div>
-  <p class="calendar-hint">Выберите время на шкале, чтобы добавить окно. Пустое время — не заполнено.</p>
+  @if (CanEdit)
+  {
+    <p class="calendar-hint">Выберите время на шкале, чтобы добавить окно. Пустое время — не заполнено.</p>
+  }
+  else if (rules.Count == 0)
+  {
+    <p class="calendar-hint">Пользователь ещё не добавил окна доступности.</p>
+  }
   <div class="calendar-scroll" tabindex="0" aria-label="Недельная сетка доступности">
     <div class="calendar-grid">
       <div class="calendar-week-header" aria-label="Выбор дня">
@@ -49,21 +69,43 @@
             @for (var h = 0; h < DayHours(day); h++)
             {
               var time = LocalDate(DayStart(day).AddHours(h));
-              <button class="calendar-slot" aria-label="Добавить окно @time.ToString("dd.MM HH:mm")" @onclick="() => OpenSlot(time)">@(DayHours(day) != 24 ? time.ToString("HH:mm") : "")</button>
+              var label = DayHours(day) != 24 ? time.ToString("HH:mm") : "";
+              if (CanEdit)
+              {
+                <button class="calendar-slot" aria-label="Добавить окно @time.ToString("dd.MM HH:mm")" @onclick="() => OpenSlot(time)">@label</button>
+              }
+              else
+              {
+                <div class="calendar-slot">@label</div>
+              }
             }
             @foreach (var block in Blocks(day))
             {
-              <button class="calendar-block session-window--@((int)block.Status)" style="@BlockStyle(block, day)" @onclick="() => OpenBlock(block, day)" title="@BlockLabel(block)">
-                <strong>@Label(block.Status)</strong><span>@BlockTime(block, day)</span><small>@Format(block.Format)</small>
-              </button>
+              var css = $"calendar-block session-window--{(int)block.Status}";
+              var content = BlockContent(block, day);
+              if (CanEdit)
+              {
+                <button class="@css" style="@BlockStyle(block, day)" @onclick="() => OpenBlock(block, day)" title="@BlockLabel(block)">@content</button>
+              }
+              else
+              {
+                <div class="@css" style="@BlockStyle(block, day)" title="@BlockLabel(block)">@content</div>
+              }
             }
           </div>
         </section>
       }
     </div>
   </div>
-  <RecurringWindows @ref="recurringWindows" Rules="rules" OnEdit="OpenSeries" OnDelete="DeleteSelected" />
-  @if (editorOpen)
+  @if (CanEdit)
+  {
+    <RecurringWindows @ref="recurringWindows" Rules="rules" OnEdit="OpenSeries" OnDelete="DeleteSelected" />
+  }
+  else
+  {
+    <RecurringWindows Rules="rules" ReadOnly="true" />
+  }
+  @if (CanEdit && editorOpen)
   {
     <dialog id="calendar-editor" class="calendar-dialog auth-card calendar-editor" role="dialog" aria-modal="true" aria-labelledby="calendar-editor-title" @onkeydown="EditorKey">
       <header><h2 id="calendar-editor-title">@(sourceRule is null ? "Новое окно" : "Изменить окно")</h2><button class="btn" @onclick="() => editorOpen = false" aria-label="Закрыть редактор">✕</button></header>
@@ -108,7 +150,7 @@
     <button class="btn" @onclick="Coverage">Показать покрытие</button>
     @foreach (var line in coverage) { <p>@line</p> }
   </details>
-  @if (admin)
+  @if (CanEdit && user.IsInRole(RoleNames.Admin))
   {
     <details class="calendar-tools"><summary>Предварительный подбор с завтра</summary>
       <SchedulingOptions Settings="settings" /><button class="btn" @onclick="Preview">Рассчитать</button>
@@ -120,9 +162,13 @@
 }
 
 @code {
-  [SupplyParameterFromQuery(Name = "from")] public DateTime? FromQuery { get; set; }
-  [SupplyParameterFromQuery(Name = "until")] public DateTime? UntilQuery { get; set; }
+  /// <summary>Задаёт пользователя для режима просмотра в админ-панели.</summary>
+  [Parameter] public Guid? ViewedUserId { get; set; }
+  [SupplyParameterFromQuery(Name = "from")] private DateTime? FromQuery { get; set; }
+  [SupplyParameterFromQuery(Name = "until")] private DateTime? UntilQuery { get; set; }
+  [CascadingParameter] private HttpContext? HttpContext { get; set; }
   private static readonly System.Globalization.CultureInfo Russian = System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
+  private bool CanEdit => ViewedUserId is null;
   private DateTime week, selectedDay;
   private (DateTime? From, DateTime? Until) lastQuery;
   private bool editorOpen, editSeries, scrollCalendar, saving;
@@ -131,7 +177,7 @@
   private AvailabilitySlice? occurrence;
   private List<AvailabilitySlice> slices = [];
   private ClaimsPrincipal user = new();
-  private ChatPreference? preference;
+  private string? zone, viewedUserName;
   private List<AvailabilityRule> rules = [];
   private AvailabilityRule rule = new();
   private DateTime startDate, endDate, repeatEndDate;
@@ -140,25 +186,60 @@
   private DateTime from = DateTime.Today.AddDays(1), until = DateTime.Today.AddDays(8);
   private string days = "", error = "";
   private List<string> coverage = [];
-  private bool admin;
   private SchedulingSettings settings = new();
   private List<SessionWindow> preview = [];
   private List<ChatPerson> people = [];
   protected override async Task OnInitializedAsync() => await Run(async () =>
   {
-    user = (await Auth.GetAuthenticationStateAsync()).User; admin = user.IsInRole(RoleNames.Admin);
-    preference = await Chat.Preference(user);
+    user = (await Auth.GetAuthenticationStateAsync()).User;
+    if (ViewedUserId is { } userId)
+    {
+      var calendar = await Scheduling.ViewUserCalendar(user, userId);
+      if (calendar is null)
+      {
+        SetStatus(StatusCodes.Status404NotFound);
+        error = "Пользователь не найден.";
+        return;
+      }
+
+      viewedUserName = calendar.DisplayName;
+      zone = calendar.Zone;
+      rules = calendar.Rules;
+    }
+    else
+    {
+      var preference = await Chat.Preference(user);
+      rules = await Scheduling.Calendar(user);
+      zone = preference.Zone;
+    }
+
     var today = LocalDate(DateTime.UtcNow).Date; from = FromQuery ?? today; until = UntilQuery ?? from.AddDays(7);
-    rules = await Scheduling.Calendar(user); SelectWeek(from); await Coverage();
+    SelectWeek(from); await Coverage();
   });
+  private void SetStatus(int status)
+  {
+    if (HttpContext?.Response is not { HasStarted: false } response) return;
+
+    // Blazor отбрасывает HTML при 404 до отправки ответа. Сохраняем сообщение и ссылку назад.
+    response.OnStarting(() =>
+    {
+      response.StatusCode = status;
+      return Task.CompletedTask;
+    });
+  }
   private async Task Run(Func<Task> action)
   {
     try { error = ""; await action(); }
-    catch (Exception e) when (e is ArgumentException or UnauthorizedAccessException or FormatException or TimeZoneNotFoundException) { error = e is UnauthorizedAccessException ? "Нет доступа." : e.Message; }
+    catch (UnauthorizedAccessException)
+    {
+      if (!CanEdit) SetStatus(StatusCodes.Status403Forbidden);
+      error = "Нет доступа.";
+    }
+    catch (Exception e) when (e is ArgumentException or FormatException or TimeZoneNotFoundException) { error = e.Message; }
   }
   protected override void OnParametersSet()
   {
-    if (preference is null || lastQuery == (FromQuery, UntilQuery)) return;
+    if (zone is null || lastQuery == (FromQuery, UntilQuery)) return;
     lastQuery = (FromQuery, UntilQuery);
     from = FromQuery ?? LocalDate(DateTime.UtcNow).Date;
     until = UntilQuery ?? from.AddDays(7);
@@ -174,16 +255,16 @@
       await JS.InvokeVoidAsync("chatUi.calendarScroll", Math.Max(0, first - 2));
     }
   }
-  private DateTime DayStart(DateTime day) => CalendarEngine.ToUtc(day.Date, preference!.Zone);
+  private DateTime DayStart(DateTime day) => CalendarEngine.ToUtc(day.Date, zone!);
   private int DayHours(DateTime day) => (int)(DayStart(day.AddDays(1)) - DayStart(day)).TotalHours;
   private int WeekHours => Enumerable.Range(0, 7).Max(i => DayHours(week.AddDays(i)));
-  private DateTime LocalDate(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(preference!.Zone));
+  private DateTime LocalDate(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.FindSystemTimeZoneById(zone!));
   private void SelectDay(DateTime day) { selectedDay = day; scrollCalendar = true; }
   private void Today() => SelectWeek(LocalDate(DateTime.UtcNow).Date);
   private void SelectWeek(DateTime day) { selectedDay = day.Date; week = selectedDay.AddDays(-((int)selectedDay.DayOfWeek + 6) % 7); Expand(); }
   private void MoveWeek(int days) { week = week.AddDays(days); selectedDay = selectedDay.AddDays(days); Expand(); }
   private bool InRequest(DateTime day) => FromQuery is not null && day >= FromQuery.Value.Date && day < (UntilQuery ?? FromQuery.Value.AddDays(7)).Date;
-  private void Expand() { slices = CalendarEngine.Expand(rules, CalendarEngine.ToUtc(week, preference!.Zone), CalendarEngine.ToUtc(week.AddDays(7), preference.Zone)); scrollCalendar = true; }
+  private void Expand() { slices = CalendarEngine.Expand(rules, CalendarEngine.ToUtc(week, zone!), CalendarEngine.ToUtc(week.AddDays(7), zone!)); scrollCalendar = true; }
   private IEnumerable<AvailabilitySlice> Blocks(DateTime day) => slices.Where(x => LocalDate(x.StartUtc) < day.AddDays(1) && LocalDate(x.EndUtc) > day)
     .GroupBy(x => new { x.RuleId, x.StartUtc, x.EndUtc, x.Status }).Select(g => g.First() with { Format = g.Aggregate((PlayFormat)0, (f, x) => f | x.Format) });
   private string BlockStyle(AvailabilitySlice block, DateTime day)
@@ -195,15 +276,17 @@
   }
   private string BlockTime(AvailabilitySlice b, DateTime day) => $"{(LocalDate(b.StartUtc) < day ? "00:00" : LocalDate(b.StartUtc).ToString("HH:mm"))}–{(LocalDate(b.EndUtc) >= day.AddDays(1) ? "24:00" : LocalDate(b.EndUtc).ToString("HH:mm"))}";
   private string BlockLabel(AvailabilitySlice b) => $"{Local(b.StartUtc)} — {Local(b.EndUtc)} · {Label(b.Status)} · {Format(b.Format)}";
+  private RenderFragment BlockContent(AvailabilitySlice block, DateTime day) =>
+    @<text><strong>@Label(block.Status)</strong><span>@BlockTime(block, day)</span><small>@Format(block.Format)</small></text>;
   private void OpenSeries(AvailabilityRule r) { error = ""; occurrence = null; sourceRule = r; EditSeries(); editorOpen = true; }
-  private void OpenSlot(DateTime time) { occurrence = null; error = ""; selectedDay = time.Date; sourceRule = null; editSeries = false; rule = new() { Zone = preference!.Zone, LocalStart = time, LocalEnd = time.AddHours(1) }; days = ""; LoadEditor(); editorOpen = true; }
+  private void OpenSlot(DateTime time) { occurrence = null; error = ""; selectedDay = time.Date; sourceRule = null; editSeries = false; rule = new() { Zone = zone!, LocalStart = time, LocalEnd = time.AddHours(1) }; days = ""; LoadEditor(); editorOpen = true; }
   private void OpenBlock(AvailabilitySlice block, DateTime day) { error = ""; sourceRule = rules.Single(x => x.Id == block.RuleId); occurrence = block; selectedDay = day; EditOccurrence(); editorOpen = true; }
   private void EditOccurrence()
   {
     editSeries = false;
     var r = sourceRule!;
     if (r.Repeat == RepeatKind.Once) { Copy(r); return; }
-    rule = new() { Zone = preference!.Zone, LocalStart = LocalDate(occurrence!.StartUtc), LocalEnd = LocalDate(occurrence.EndUtc), Status = occurrence.Status, Format = occurrence.Format };
+    rule = new() { Zone = zone!, LocalStart = LocalDate(occurrence!.StartUtc), LocalEnd = LocalDate(occurrence.EndUtc), Status = occurrence.Status, Format = occurrence.Format };
     LoadEditor();
   }
   private void EditSeries() { editSeries = true; Copy(sourceRule!); }
@@ -246,25 +329,24 @@
   }
   private Task DeleteSelected(Guid[] ids) => Run(async () => { await Scheduling.DeleteRules(user, ids); await Reload(); });
   private async Task Reload() { rules = await Scheduling.Calendar(user); editorOpen = false; Expand(); await Coverage(); }
-  private Task AllDay(AvailabilityStatus status) => Run(async () => { await Scheduling.SaveRule(user, new() { LocalStart = selectedDay.Date, LocalEnd = selectedDay.Date.AddDays(1), Zone = preference!.Zone, Status = status, Format = PlayFormat.Both }); await Reload(); });
+  private Task AllDay(AvailabilityStatus status) => Run(async () => { await Scheduling.SaveRule(user, new() { LocalStart = selectedDay.Date, LocalEnd = selectedDay.Date.AddDays(1), Zone = zone!, Status = status, Format = PlayFormat.Both }); await Reload(); });
   private Task Coverage() => Run(() =>
   {
     if (until <= from || until > from.AddDays(60)) throw new ArgumentException("Период покрытия: 1–60 дней.");
     coverage.Clear();
-    var id = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
-    var slices = CalendarEngine.Expand(rules, CalendarEngine.ToUtc(from.Date, preference!.Zone), CalendarEngine.ToUtc(until.Date, preference.Zone));
+    var slices = CalendarEngine.Expand(rules, CalendarEngine.ToUtc(from.Date, zone!), CalendarEngine.ToUtc(until.Date, zone!));
     for (var date = from.Date; date < until.Date; date = date.AddDays(1))
     foreach (var format in new[] { PlayFormat.Online, PlayFormat.Offline })
     {
-      var start = CalendarEngine.ToUtc(date, preference.Zone); var end = CalendarEngine.ToUtc(date.AddDays(1), preference.Zone);
-      var minutes = slices.Where(x => x.UserId == id && x.Format == format && x.StartUtc < end && x.EndUtc > start)
+      var start = CalendarEngine.ToUtc(date, zone!); var end = CalendarEngine.ToUtc(date.AddDays(1), zone!);
+      var minutes = slices.Where(x => x.Format == format && x.StartUtc < end && x.EndUtc > start)
         .Sum(x => ((x.EndUtc < end ? x.EndUtc : end) - (x.StartUtc > start ? x.StartUtc : start)).TotalMinutes);
       coverage.Add($"{date:dd.MM}: {Format(format)} — {(minutes == (end - start).TotalMinutes ? "день полностью заполнен" : $"не заполнено {(end - start).TotalMinutes - minutes:0} минут")}");
     }
     return Task.CompletedTask;
   });
-  private Task Preview() => Run(async () => { preview = await Scheduling.Preview(user, preference!.Zone, settings); people = (await Chat.Snapshot(user, await Chat.Main(user), 1, false)).People; });
-  private string Local(DateTime date) => TimeZoneInfo.ConvertTimeFromUtc(date, TimeZoneInfo.FindSystemTimeZoneById(preference!.Zone)).ToString("dd.MM.yyyy HH:mm");
+  private Task Preview() => Run(async () => { preview = await Scheduling.Preview(user, zone!, settings); people = (await Chat.Snapshot(user, await Chat.Main(user), 1, false)).People; });
+  private string Local(DateTime date) => LocalDate(date).ToString("dd.MM.yyyy HH:mm");
   private static string Format(PlayFormat f) => f switch { PlayFormat.Online => "Онлайн", PlayFormat.Offline => "Офлайн", _ => "Онлайн и офлайн" };
   private static string Repeat(RepeatKind r) => r switch { RepeatKind.Once => "Разово", RepeatKind.Daily => "Ежедневно", RepeatKind.Weekly => "По дням недели", _ => "По числам месяца" };
   private static string Label(AvailabilityStatus s) => s switch { AvailabilityStatus.Certain => "Точно могу", AvailabilityStatus.PreferOther => "Могу, но предпочёл бы другое время", AvailabilityStatus.Unlikely => "Скорее всего не смогу", AvailabilityStatus.Unavailable => "Точно не смогу", _ => "Не заполнено" };
