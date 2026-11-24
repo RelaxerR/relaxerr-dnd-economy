@@ -54,6 +54,41 @@ for path in ['/chat', '/calendar', '/profile', '/catalog', '/chat-settings']:
         assert 'no-store' in response.headers['Cache-Control']
 print('PASS Identity login, chat/calendar/profile/catalog/settings and private page headers')
 
+admin, _ = login(0)
+calendar_path = f"/admin/users/{manifest['calendarOwner']}/calendar"
+calendar_query = f"?from={manifest['calendarDate']}"
+admin_users = admin.open(BASE + '/admin/users').read().decode()
+assert f'href="{calendar_path}"' in admin_users
+with admin.open(BASE + calendar_path + calendar_query) as calendar:
+    assert calendar.status == 200
+    assert 'no-store' in calendar.headers['Cache-Control']
+    html = unescape(calendar.read().decode())
+    assert 'Календарь · Приёмка 2' in html and 'Только просмотр · Europe/Berlin' in html
+    assert 'Период запроса' in html and '19:00–21:00' in html
+    assert '<div class="calendar-block' in html
+    assert '<button class="calendar-block' not in html and '<button class="calendar-slot' not in html
+    assert all(action not in html for action in ('+ Окно', 'Весь день занят', '>Изменить</button>', '>Удалить</button>'))
+with admin.open(BASE + f"/admin/users/{manifest['emptyCalendarOwner']}/calendar") as calendar:
+    html = unescape(calendar.read().decode())
+    assert 'Календарь · Приёмка 3' in html and 'Пользователь ещё не добавил окна доступности.' in html
+    assert 'Europe/Samara' in html and '<div class="calendar-block' not in html
+try:
+    admin.open(BASE + '/admin/users/00000000-0000-0000-0000-000000000000/calendar')
+    raise AssertionError('Missing calendar owner returned a success response')
+except urllib.error.HTTPError as error:
+    assert error.code == 404
+    assert 'Пользователь не найден.' in unescape(error.read().decode())
+with recipient.open(BASE + calendar_path) as denied:
+    assert '/Account/AccessDenied' in denied.geturl()
+    assert 'Календарь · Приёмка 2' not in unescape(denied.read().decode())
+with urllib.request.build_opener(LoopbackRedirects()).open(BASE + calendar_path) as anonymous:
+    assert '/Account/Login' in anonymous.geturl()
+with recipient.open(BASE + '/calendar' + calendar_query) as personal:
+    html = unescape(personal.read().decode())
+    assert 'Мой календарь' in html and '<button class="calendar-block' in html
+    assert '+ Окно' in html and 'Период запроса' in html
+print('PASS admin calendar links, read-only grid, empty and missing owners, role checks and personal edits')
+
 url = BASE + '/chat-files/' + manifest['file']
 if expired:
     try:

@@ -1,0 +1,12 @@
+@page "/admin/users/{UserId:guid}/calendar"
+@rendermode InteractiveServer
+@using DndEconomy.Domain.Constants
+@using DndEconomy.Web.Components.Pages.Chat
+@attribute [Authorize(Roles = RoleNames.Admin)]
+
+<AvailabilityCalendar ViewedUserId="UserId" @key="UserId" />
+
+@code {
+  /// <summary>Пользователь, чей календарь открывается в админ-панели.</summary>
+  [Parameter] public Guid UserId { get; set; }
+}

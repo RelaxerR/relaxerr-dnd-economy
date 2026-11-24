@@ -423,6 +423,72 @@ public sealed class PostgresTests
   }
 
   [PostgresFact]
+  public async Task AdminCalendarReadChecksCurrentRoleAndReturnsOnlyTheSelectedUser()
+  {
+    var name = "relaxerr_calendar_test_" + Guid.NewGuid().ToString("N");
+    var connection = Environment.GetEnvironmentVariable("DND_TEST_POSTGRES")!;
+    await using var admin = new NpgsqlConnection(connection); await admin.OpenAsync();
+    await using (var create = new NpgsqlCommand($"CREATE DATABASE {name}", admin)) await create.ExecuteNonQueryAsync();
+    var factory = new TestFactory(new NpgsqlConnectionStringBuilder(connection) { Database = name }.ConnectionString);
+    try
+    {
+      var master = new ApplicationUser { DisplayName = "Master", MustChangePassword = false, SecurityStamp = "master-stamp" };
+      var player = new ApplicationUser { DisplayName = "Player", MustChangePassword = false, SecurityStamp = "player-stamp" };
+      var empty = new ApplicationUser { DisplayName = "Empty", IsActive = false };
+      await using (var db = factory.CreateDbContext())
+      {
+        await db.Database.MigrateAsync();
+        var role = new IdentityRole<Guid> { Name = "Admin", NormalizedName = "ADMIN" };
+        db.AddRange(master, player, empty, role);
+        db.UserRoles.Add(new() { UserId = master.Id, RoleId = role.Id });
+        db.Add(new ChatPreference { UserId = player.Id, Zone = "Europe/Berlin" });
+        await db.SaveChangesAsync();
+      }
+
+      static ClaimsPrincipal Principal(ApplicationUser user, string role) => new(new ClaimsIdentity([
+        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Role, role),
+        new Claim("AspNet.Identity.SecurityStamp", user.SecurityStamp!)
+      ], "test"));
+      var adminUser = Principal(master, "Admin");
+      var playerUser = Principal(player, "Player");
+      var service = new SchedulingService(factory, TimeProvider.System);
+      var start = new DateTime(2026, 12, 1, 19, 0, 0);
+      var playerRule = new AvailabilityRule { Zone = "Europe/Berlin", LocalStart = start, LocalEnd = start.AddHours(2), Repeat = RepeatKind.Daily };
+      var adminRule = new AvailabilityRule { Zone = "UTC", LocalStart = start, LocalEnd = start.AddHours(1) };
+      await service.SaveRule(playerUser, playerRule);
+      await service.SaveRule(adminUser, adminRule);
+
+      var viewed = Assert.IsType<UserCalendar>(await service.ViewUserCalendar(adminUser, player.Id));
+      Assert.Equal(player.DisplayName, viewed.DisplayName);
+      Assert.Equal("Europe/Berlin", viewed.Zone);
+      Assert.Equal(playerRule.Id, Assert.Single(viewed.Rules).Id);
+      Assert.Equal(playerRule.Id, Assert.Single(await service.Calendar(playerUser)).Id);
+      Assert.Equal(adminRule.Id, Assert.Single(await service.Calendar(adminUser)).Id);
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.SaveRule(adminUser, viewed.Rules[0]));
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.DeleteRule(adminUser, playerRule.Id));
+
+      var emptyCalendar = Assert.IsType<UserCalendar>(await service.ViewUserCalendar(adminUser, empty.Id));
+      Assert.Equal(empty.DisplayName, emptyCalendar.DisplayName);
+      Assert.Equal(new ChatPreference().Zone, emptyCalendar.Zone);
+      Assert.Empty(emptyCalendar.Rules);
+      var missingId = Guid.NewGuid();
+      Assert.Null(await service.ViewUserCalendar(adminUser, missingId));
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ViewUserCalendar(playerUser, missingId));
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ViewUserCalendar(playerUser, master.Id));
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ViewUserCalendar(new ClaimsPrincipal(), player.Id));
+
+      await using (var db = factory.CreateDbContext())
+        await db.UserRoles.Where(x => x.UserId == master.Id).ExecuteDeleteAsync();
+      await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ViewUserCalendar(adminUser, player.Id));
+    }
+    finally
+    {
+      NpgsqlConnection.ClearAllPools();
+      await using var drop = new NpgsqlCommand($"DROP DATABASE {name} WITH (FORCE)", admin); await drop.ExecuteNonQueryAsync();
+    }
+  }
+
+  [PostgresFact]
   public async Task RecurringRulesCanBeFoundUpdatedAndDeletedWithoutLosingIndependentExceptions()
   {
     var name = "relaxerr_repeats_test_" + Guid.NewGuid().ToString("N");
