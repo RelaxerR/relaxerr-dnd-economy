@@ -141,5 +141,14 @@ with sync_playwright() as playwright:
           document.documentElement.scrollHeight === innerHeight &&
           document.documentElement.scrollWidth === innerWidth"""), f'Page overflow at {width}×{height}'
 
+    # A full-length draft can exceed SignalR's default byte limit in both input and send events.
+    long_prefix = f'{prefix} Unicode '
+    long_text = long_prefix + '界' * (12000 - len(long_prefix))
+    draft.fill(long_text)
+    draft.press('Enter')
+    expect(message(long_prefix)).to_have_count(1)
+    assert message(long_prefix).text_content() == long_text
+    expect(draft).to_have_value('')
+
     assert not errors, errors
     print('Chat send, editing, draft retention, attachments and scrolling passed at 1280×900, 360×740 and 667×375.')
