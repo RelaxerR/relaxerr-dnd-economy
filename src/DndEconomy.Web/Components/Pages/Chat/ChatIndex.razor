@@ -17,7 +17,7 @@
 <h1 class="sr-only">Чат</h1>
 @if (error is not null) { <p role="alert" class="status-message">@error</p> }
 <div class="chat-shell @(showList ? "chat-shell--list" : "")">
-  <aside class="chat-sidebar @(showList ? "chat-sidebar--open" : "")">
+  <aside class="chat-sidebar" aria-label="Разговоры">
     <h2>Разговоры</h2><a href="/chat-settings">Настройки и уведомления</a>
     <button class="btn" @onclick="ToggleArchive">@(archive ? "Активные" : "Архив веток")</button>
     @if (snapshot is not null)
@@ -48,11 +48,18 @@
 
     @if (snapshot is not null)
     {
-      <header class="chat-conversation-header"><button class="btn chat-mobile-toggle" @onclick="() => showList = true">← Назад</button><div><h2>@snapshot.CurrentRoom.Name</h2><small>@(snapshot.CurrentRoom.Readers.Length > 0 ? "Личная ветка · доступна также администраторам" : "Чат кампании")</small></div></header>
+      <header class="chat-conversation-header">
+        <button class="btn chat-mobile-toggle" @onclick="() => showList = true">← Чаты</button>
+        <div>
+          <h2 title="@snapshot.CurrentRoom.Name">@snapshot.CurrentRoom.Name</h2>
+          <small>@(snapshot.CurrentRoom.Readers.Length > 0 ? "Личная ветка · доступна также администраторам" : "Чат кампании")</small>
+        </div>
+      </header>
       @if (snapshot.CurrentRoom.IsThread)
       {
         <details class="chat-thread-title"><summary>Название ветки</summary><label>Название<input @bind="threadName" maxlength="200" /></label><button class="btn" @onclick="RenameThread">Сохранить название</button></details>
       }
+      <div class="chat-timeline">
       <div id="chat-history" class="chat-history" tabindex="0" aria-label="История сообщений">
       @if (snapshot.Pinned.Count > 0)
       {
@@ -112,24 +119,29 @@
       }
       <div id="chat-bottom"></div></div>
       @if (newMessages > 0) { <button class="btn chat-jump" @onclick="JumpToLatest">Новые сообщения (@newMessages) ↓</button> }
-      <div class="chat-composer">
+      </div>
+      <div class="chat-composer" @ref="composer">
       <p class="chat-typing" aria-live="polite">@(snapshot.Typing.Count > 0 ? $"Печатает: {Names(snapshot.Typing)}" : "")</p>
-      @if (editing is not null) { <p>Редактирование <button class="btn" @onclick="CancelEdit">Отменить</button></p> }
-      <label>Сообщение<textarea value="@draft" @oninput="DraftChanged" maxlength="12000" rows="3"></textarea></label>
+      @if (editing is not null) { <p class="chat-editing">Редактирование <button class="btn" @onclick="CancelEdit">Отменить</button></p> }
+      @{ var version = draftVersion; }
+      <div class="chat-compose-row">
+        <label class="sr-only" for="chat-draft">Сообщение</label>
+        <textarea id="chat-draft" @key="version" data-chat-draft="@version" value="@initialDraft"
+                  placeholder="Сообщение" maxlength="12000" rows="2"></textarea>
+        <button type="button" class="btn btn--primary chat-send" data-chat-send
+                aria-label="@(busy ? "Отправка…" : "Отправить")" disabled="@(!interactive || busy)">
+          <span class="chat-send-label">@(busy ? "Отправка…" : "Отправить")</span><span class="chat-send-icon" aria-hidden="true">➤</span>
+        </button>
+      </div>
+      <div class="chat-compose-tools">
       <details><summary>Кому@(recipients.Count == 0 ? "" : $": {Names(recipients)}")</summary>
         <p>Личные сообщения доступны также администраторам. Ветка сохраняет прежний круг читателей.</p>
         @foreach (var p in snapshot.People.Where(x => (x.IsActive || recipients.Contains(x.Id)) && x.Id != userId && (snapshot.CurrentRoom.Readers is not { Length: > 0 } audience || audience.Contains(x.Id))))
         {
-          <label><input type="checkbox" checked="@recipients.Contains(p.Id)" @onchange="e => Recipient(p.Id, (bool)e.Value!)" /> @p.Name@(!p.IsActive ? " (временно не активен)" : "")</label>
+          <label><input type="checkbox" disabled="@busy" checked="@recipients.Contains(p.Id)" @onchange="e => Recipient(p.Id, (bool)e.Value!)" /> @p.Name@(!p.IsActive ? " (временно не активен)" : "")</label>
         }
       </details>
-      <label class="chat-attachment" title="Прикрепить файл">📎<span class="sr-only">Вложение к сообщению</span><InputFile OnChange="SelectAttachment" /></label>
-      @if (pendingFile is not null) { <p>📎 @pendingFile.Name <button class="btn" @onclick="() => pendingFile = null">Убрать</button></p> }
-      @if (Recognized() is { } recognized)
-      {
-        <label><input type="checkbox" @bind="confirmTime" /> Подтвердить дату @recognized.ToString("dd.MM.yyyy HH:mm") (@preference.Zone); показать местное время читателям</label>
-      }
-      <button class="btn btn--primary chat-send" aria-label="@(busy ? "Отправка…" : "Отправить")" disabled="@busy" @onclick="Send"><span class="chat-send-label">@(busy ? "Отправка…" : "Отправить")</span><span class="chat-send-icon" aria-hidden="true">➤</span></button>
+      <label class="chat-attachment" title="Прикрепить файл">📎<span class="sr-only">Вложение к сообщению</span><InputFile disabled="@busy" OnChange="SelectAttachment" /></label>
       <a class="btn chat-calendar" href="/calendar" aria-label="Календарь">📅<span class="chat-calendar-label"> Календарь</span></a>
       <details class="chat-compose-more"><summary>Ещё</summary>
       <details><summary>Создать опрос</summary>
@@ -147,6 +159,12 @@
         </details>
       }
       </details>
+      @if (pendingFile is not null) { <p>📎 @pendingFile.Name <button class="btn" disabled="@busy" @onclick="() => pendingFile = null">Убрать</button></p> }
+      @if (recognizedTime is { } recognized)
+      {
+        <label><input type="checkbox" disabled="@busy" @bind="confirmTime" /> Подтвердить дату @recognized.ToString("dd.MM.yyyy HH:mm") (@preference.Zone); показать местное время читателям</label>
+      }
+      </div>
       </div>
     }
   </section>
@@ -162,6 +180,12 @@
   private string? error;
   private string threadName = "";
   private string draft = "", newRoom = "", search = "", question = "", pollOptions = "";
+  private string initialDraft = "";
+  private int draftVersion;
+  private DateTime? recognizedTime;
+  private ElementReference composer;
+  private string? boundComposerId;
+  private DotNetObjectReference<ChatIndex>? composerReference;
   private DateTime pollEnd = DateTime.Today.AddDays(1).AddHours(20);
   private ChatPreference preference = new();
   private ChatSnapshot? snapshot;
@@ -205,9 +229,20 @@
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
-    if (firstRender) { interactive = true; loop = Updates(); }
+    if (snapshot is not null && composer.Id is { } id && id != boundComposerId)
+    {
+      boundComposerId = id;
+      composerReference ??= DotNetObjectReference.Create(this);
+      await JS.InvokeVoidAsync("chatUi.bindComposer", composer, composerReference);
+    }
+    if (firstRender)
+    {
+      interactive = true;
+      loop = Updates();
+      StateHasChanged();
+    }
     if (restoreHistory) { restoreHistory = false; await JS.InvokeVoidAsync("chatUi.restore"); }
-    if (pendingScroll is { } id) { pendingScroll = null; await JS.InvokeVoidAsync("chatUi.scroll", id); }
+    if (pendingScroll is { } target) { pendingScroll = null; await JS.InvokeVoidAsync("chatUi.scroll", target); }
   }
 
   private async Task Updates()
@@ -264,32 +299,92 @@
   private Task OpenMessage(Guid id) => Run(async () => { var loc = await Chat.Locate(user, id); room = loc.Room; take = loc.Take; showList = false; CancelEdit(); recipients.Clear(); pendingFile = null; await Refresh(); pendingScroll = $"message-{id}"; });
   private Task ToggleArchive() => Run(async () => { archive = !archive; await Refresh(); });
   private Task Older() => Run(async () => { take += 50; await Refresh(); });
-  private Task CreateRoom() => Run(async () => { room = await Chat.CreateRoom(user, newRoom); newRoom = ""; showList = false; await Refresh(); pendingScroll = "chat-bottom"; });
+  private Task CreateRoom() => Run(async () => { var id = await Chat.CreateRoom(user, newRoom); newRoom = ""; await OpenRoom(id); });
   private Task Find() => Run(async () => hits = await Chat.Search(user, search));
   private Task RenameThread() => Run(async () => { await Chat.RenameThread(user, room, threadName); await Refresh(); });
   private Task StartThread(Guid id) => Run(async () => { showList = false; room = await Chat.Thread(user, id); take = 50; CancelEdit(); recipients.Clear(); pendingFile = null; await Refresh(); pendingScroll = "chat-bottom"; });
-  private void BeginEdit(ChatMessage m) { editing = m.Id; draft = m.Text; confirmTime = false; }
-  private void CancelEdit() { editing = null; draft = ""; confirmTime = false; }
-  private Task DraftChanged(ChangeEventArgs e) { draft = e.Value?.ToString() ?? ""; confirmTime = false; return Run(() => Chat.Presence(user, room, connection, draft.Length > 0 && recipients.Count == 0)); }
-  private void Recipient(Guid id, bool selected) { if (selected) recipients.Add(id); else recipients.Remove(id); }
-  private DateTime? Recognized() => ChatTimeParser.Recognize(draft);
-  private Task Send() => Run(async () =>
+  private void BeginEdit(ChatMessage m) => ResetDraft(m.Id, m.Text);
+  private void CancelEdit() => ResetDraft(null, "");
+  private void ResetDraft(Guid? message, string text)
   {
-    if (pendingFile is not null) ValidateAttachment(pendingFile);
+    editing = message;
+    // Change the textarea's initial value only when replacing the draft.
+    initialDraft = draft = text;
+    recognizedTime = ChatTimeParser.Recognize(text);
+    draftVersion++;
+    confirmTime = false;
+  }
+  /// <summary>Обновляет подсказку о дате и статус печати для текущего черновика.</summary>
+  [JSInvokable]
+  public void UpdateDraft(int version, string? text)
+  {
+    if (version != draftVersion || text is null) return;
+    var newTime = ChatTimeParser.Recognize(text);
+    var datePromptChanged = confirmTime || newTime != recognizedTime;
+    draft = text;
+    recognizedTime = newTime;
+    confirmTime = false;
+    if (datePromptChanged) StateHasChanged();
+  }
+  private void Recipient(Guid id, bool selected) { if (selected) recipients.Add(id); else recipients.Remove(id); }
+
+  /// <summary>Отправляет снимок текста из браузера по нажатию кнопки или Enter.</summary>
+  [JSInvokable]
+  public async Task<bool> SendDraft(int version, string? text)
+  {
+    if (text is null || busy || version != draftVersion || snapshot?.CurrentRoom.Id != room) return false;
+
+    var target = room;
+    var edit = editing;
+    var file = pendingFile;
+    var readers = recipients.ToArray();
+    var confirmed = confirmTime && text == draft ? recognizedTime : null;
+    var sent = false;
     busy = true;
     try
     {
-      if (editing is { } edit) await Chat.Edit(user, edit, draft);
-      else
+      await Run(async () =>
       {
-        var utc = confirmTime && Recognized() is { } local ? CalendarEngine.ToUtc(local, preference.Zone) : (DateTime?)null;
-        var id = await Chat.Send(user, room, string.IsNullOrWhiteSpace(draft) && pendingFile is not null ? "Вложение" : draft, recipients.ToArray(), utc, utc is null ? null : preference.Zone);
-        if (pendingFile is not null) { await using var stream = pendingFile.OpenReadStream(100_000_000, lifetime.Token); await Chat.Upload(user, id, pendingFile.Name, stream, lifetime.Token); }
-      }
-      CancelEdit(); recipients.Clear(); pendingFile = null; await Refresh(); pendingScroll = "chat-bottom";
+        StateHasChanged();
+        if (file is not null) ValidateAttachment(file);
+
+        Guid? message = null;
+        if (edit is { } id)
+          await Chat.Edit(user, id, text);
+        else
+        {
+          var utc = confirmed is { } local ? CalendarEngine.ToUtc(local, preference.Zone) : (DateTime?)null;
+          message = await Chat.Send(user, target, string.IsNullOrWhiteSpace(text) && file is not null ? "Вложение" : text,
+            readers, utc, utc is null ? null : preference.Zone);
+        }
+
+        sent = true;
+        if (version == draftVersion)
+        {
+          editing = null;
+          confirmTime = false;
+          recipients.Clear();
+          pendingFile = null;
+        }
+        if (message is { } created && file is not null)
+        {
+          await using var stream = file.OpenReadStream(100_000_000, lifetime.Token);
+          await Chat.Upload(user, created, file.Name, stream, lifetime.Token);
+        }
+        if (target == room)
+        {
+          await Refresh();
+          if (target == room) pendingScroll = "chat-bottom";
+        }
+      });
+      return sent;
     }
-    finally { busy = false; }
-  });
+    finally
+    {
+      busy = false;
+      StateHasChanged();
+    }
+  }
   private Task Upload(Guid id, InputFileChangeEventArgs e) => Run(async () =>
   {
     ValidateAttachment(e.File);
@@ -312,5 +407,12 @@
   private Task Highlight(Guid id) => Run(async () => { await Chat.Highlight(user, id); await Refresh(); });
   private Task CreatePoll() => Run(async () => { await Chat.CreatePoll(user, room, question, pollOptions.Split('\n', StringSplitOptions.RemoveEmptyEntries), multiple, CalendarEngine.ToUtc(pollEnd, preference.Zone), recipients.ToArray()); question = pollOptions = ""; recipients.Clear(); await Refresh(); });
   private Task Request() => Run(async () => { await Scheduling.Request(user, room, preference.Zone, settings); await Refresh(); });
-  public async ValueTask DisposeAsync() { lifetime.Cancel(); if (loop is not null) await loop; lifetime.Dispose(); }
+  /// <inheritdoc />
+  public async ValueTask DisposeAsync()
+  {
+    lifetime.Cancel();
+    if (loop is not null) await loop;
+    composerReference?.Dispose();
+    lifetime.Dispose();
+  }
 }

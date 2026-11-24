@@ -34,7 +34,10 @@ if (chatStorage == publicRoot || chatStorage.StartsWith(publicRoot + Path.Direct
 builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services.AddRazorComponents()
-  .AddInteractiveServerComponents();
+  .AddInteractiveServerComponents()
+  // До 12 000 символов чата могут занять 72 000 байт после JSON-экранирования,
+  // без учёта обёртки события ввода или вызова SendDraft.
+  .AddHubOptions(options => options.MaximumReceiveMessageSize = 80 * 1024);
 
 // API-контроллеры (DndEconomy.Web/Controllers) — поиск и создание предмета для макросов
 // Foundry VTT, авторизация статичным API-ключом (см. ApiKeyAuthenticationHandler), не cookie.

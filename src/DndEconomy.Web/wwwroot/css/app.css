@@ -797,16 +797,18 @@ body {
 }
 
 /* Messenger: a fixed conversation frame with independently scrolling history. */
-.chat-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: auto; flex: 1; min-height: 0; gap: 0; border: 1px solid #ded8ce; border-radius: 18px; background: #fffdf9; overflow: hidden; }
-.chat-sidebar { display: flex; flex-direction: column; gap: .6rem; padding: 18px; overflow-y: auto; background: #f4f0e9; border-right: 1px solid #ded8ce; }
+.chat-shell { display: grid; grid-template: minmax(0, 1fr) / 250px minmax(0, 1fr); flex: 1; min-height: 0; border: 1px solid #ded8ce; border-radius: 18px; background: #fffdf9; overflow: hidden; }
+.chat-sidebar { display: flex; flex-direction: column; gap: .6rem; padding: 18px; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; background: #f4f0e9; border-right: 1px solid #ded8ce; }
 .chat-sidebar h2 { margin: 0 0 12px; font-size: 1.15rem; }
 .chat-sidebar > .btn { text-align: left; display: flex; justify-content: space-between; gap: 8px; white-space: normal; }
 .chat-badge { border-radius: 12px; padding: 0 7px; background: #714a2a; color: white; font-size: .8rem; }
-.chat-feed { position: relative; min-width: 0; display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.chat-conversation-header { display: flex; align-items: center; gap: 12px; padding: 16px 22px; border-bottom: 1px solid #e6dfd3; }
-.chat-conversation-header h2 { margin: 0; font-size: 1.2rem; }
+.chat-feed { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.chat-conversation-header { display: flex; flex: none; align-items: center; gap: 12px; padding: 14px 22px; border-bottom: 1px solid #e6dfd3; }
+.chat-conversation-header > div { min-width: 0; }
+.chat-conversation-header h2 { margin: 0; font-size: 1.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-conversation-header small { color: #776e63; }
-.chat-history { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; overflow-anchor: none; padding: 12px 22px; }
+.chat-timeline { flex: 1; min-height: 0; position: relative; }
+.chat-history { height: 100%; overflow-y: auto; overscroll-behavior: contain; overflow-anchor: none; padding: 12px 22px; }
 .chat-history > .chat-message { width: fit-content; max-width: 88%; min-width: 140px; margin: 10px auto 10px 0; padding: 12px 15px; background: #f0ede7; border: 1px solid #e2d9cc; border-radius: 14px 14px 14px 3px; }
 .chat-history > .chat-message--own { margin-left: auto; margin-right: 0; background: #e7efe5; border-color: #cddcc7; border-radius: 14px 14px 3px 14px; }
 .chat-history > .chat-message--highlight { border-left: 4px solid #a37225; }
@@ -821,12 +823,15 @@ body {
 .chat-message-menu[open] { width: 100%; }
 .chat-menu-actions { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 8px; border-top: 1px solid #d9d0c2; }
 .chat-menu-actions p { width: 100%; font-size: .8rem; }
-.chat-composer { padding: 10px 18px 14px; border-top: 1px solid #e6dfd3; background: #fffdf9; max-height: 48%; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.chat-composer > label:has(textarea), .chat-composer > p, .chat-composer > label:has(input[type=checkbox]) { width: 100%; margin: 0; }
-.chat-composer textarea { resize: vertical; min-height: 66px; max-height: 150px; background: white; }
-.chat-composer > details { margin: 0; }
-.chat-composer > details > summary { cursor: pointer; padding: 8px; font-size: .88rem; }
-.chat-composer > details[open] { flex-basis: 100%; }
+.chat-composer { padding: 8px 18px; border-top: 1px solid #e6dfd3; background: #fffdf9; display: flex; flex: 0 0 auto; flex-direction: column; gap: 6px; }
+.chat-compose-row { display: flex; align-items: center; gap: 8px; }
+.chat-compose-row textarea { flex: 1; min-width: 0; resize: none; background: white; }
+.chat-compose-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-height: min(25dvh, 12rem); overflow: auto; overscroll-behavior: contain; }
+.chat-compose-tools > p, .chat-compose-tools > label:not(.chat-attachment) { width: 100%; margin: 0; overflow-wrap: anywhere; }
+.chat-compose-tools > details { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.chat-compose-tools > details > summary { cursor: pointer; padding: 8px; font-size: .88rem; }
+.chat-compose-tools > details[open] { flex-basis: 100%; padding: 0 4px 4px; }
+.chat-editing { margin: 0; font-size: .85rem; }
 .chat-typing:empty { display: none; }
 .chat-composer .chat-attachment { position: relative; display: inline-flex; margin: 0; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 8px; background: #f0ede7; overflow: hidden; }
 .chat-attachment input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; max-width: 100%; }
@@ -896,18 +901,18 @@ button.calendar-block { cursor: pointer; }
 .calendar-dialog { border: 1px solid #ded8ce; color: inherit; }
 .calendar-slot { text-align: left; font: inherit; font-size: .7rem; color: #746b60; }
 .app-content:has(.chat-shell), .app-content:has(.calendar-grid) { max-width: 1360px; padding: 24px; }
-.app-shell:has(.chat-shell) { height: 100dvh; }
+.app-shell:has(.chat-shell) { height: 100dvh; min-height: 0; overflow: hidden; }
 .app-content:has(.chat-shell) { display: flex; flex-direction: column; min-height: 0; }
+.app-shell:has(.chat-shell) .app-header__nav { flex-wrap: wrap; overflow-wrap: anywhere; }
 .chat-composer > .chat-typing { font-size: .8rem; color: #776e63; margin: 0; }
 @media (max-width: 700px) {
   .app-content:has(.chat-shell) { padding: 10px; }
   .app-content:has(.calendar-grid) { padding: 18px 12px; }
   .app-header:has(+ .app-content .chat-shell) { padding: 10px 14px; }
   .app-header:has(+ .app-content .chat-shell) .app-header__nav { gap: 6px 10px; font-size: .8rem; }
-  .chat-composer { flex-shrink: 0; max-height: 55%; }
+  .chat-compose-row textarea { font-size: 1rem; }
 }
 .chat-new { margin-left: 6px; font-size: .7rem; color: #4c683f; }
-.chat-composer > .btn--primary { margin-left: auto; }
 .calendar-heading h1 { font-size: 1.75rem; margin: 0; }
 .calendar-heading p { margin: 6px 0; }
 .calendar-toolbar { margin: 8px 0; }
@@ -916,7 +921,7 @@ button.calendar-block { cursor: pointer; }
 .calendar-days { margin: 8px 0; }
 .calendar-scroll { height: calc(100dvh - 340px); }
 .calendar-block { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; }
-.chat-jump { position: absolute; bottom: 180px; align-self: center; box-shadow: 0 3px 15px #0002; background: #f8edda; }
+.chat-jump { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); box-shadow: 0 3px 15px #0002; background: #f8edda; }
 .chat-send-icon { display: none; }
 .chat-compose-more[open] > details { margin: 10px 0; }
 @media (max-width: 700px) {
@@ -952,7 +957,6 @@ button.calendar-block { cursor: pointer; }
   .calendar-week-header { grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .calendar-week-header > span { display: none; }
   .calendar-week-header .calendar-column-title { font-size: .7rem; }
-  .chat-conversation-header h2 { overflow-wrap: anywhere; }
 }
 .chat-conversation-header > div { min-width: 0; }
 .chat-sidebar > .btn { overflow-wrap: anywhere; }

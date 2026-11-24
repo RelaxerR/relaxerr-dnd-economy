@@ -3,6 +3,45 @@ window.chatUi = {
   calendarScroll(hour) { const el = document.querySelector(".calendar-scroll"); if (el) el.scrollTop = hour * 64; },
   openDialog(id) { const el = document.getElementById(id); if (el && !el.open) el.showModal(); },
   mobile: () => matchMedia('(max-width: 700px)').matches,
+  bindComposer(composer, reference) {
+    const findDraft = () => composer.querySelector('[data-chat-draft]');
+    const sendButton = composer.querySelector('[data-chat-send]');
+    let sending = false;
+    let inputVersion = 0;
+
+    async function send() {
+      const draft = findDraft();
+      if (!draft || sendButton.disabled || sending) return;
+      const version = inputVersion;
+      sending = true;
+      try {
+        const sent = await reference.invokeMethodAsync('SendDraft', Number(draft.dataset.chatDraft), draft.value);
+        if (sent && draft === findDraft() && version === inputVersion) {
+          draft.value = '';
+          draft.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } catch (error) {
+        console.error('Chat send failed', error);
+      } finally {
+        sending = false;
+      }
+    }
+
+    composer.addEventListener('input', event => {
+      const draft = findDraft();
+      if (!draft || event.target !== draft) return;
+      inputVersion++;
+      reference.invokeMethodAsync('UpdateDraft', Number(draft.dataset.chatDraft), draft.value)
+        .catch(error => console.error('Chat draft update failed', error));
+    });
+    composer.addEventListener('keydown', event => {
+      if (event.target !== findDraft() || event.key !== 'Enter' || event.shiftKey ||
+          event.isComposing || event.keyCode === 229) return;
+      event.preventDefault();
+      if (!event.repeat) void send();
+    });
+    sendButton.addEventListener('click', () => { void send(); });
+  },
   capture() {
     const el = document.getElementById('chat-history');
     if (!el) return true;
